@@ -32,8 +32,8 @@
             <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-800 mb-2">Plano Mestre de Retenção</h1>
             <p class="text-lg text-gray-600">Engenharia da Memória para o Inglês. Adeus, Decoreba!</p>
             <!-- Alterado: Melhorando a informação do usuário -->
-            <p class="text-sm text-gray-600 mt-2 font-medium">Seu progresso é salvo automaticamente neste ID de Usuário:</p>
-            <p id="user-info" class="text-sm text-blue-500 mt-1 font-bold break-all">Carregando...</p>
+            <p class="text-sm text-gray-600 mt-2 font-medium">Seu progresso é salvo automaticamente neste ID de Usuário (salvo no seu Firestore):</p>
+            <p id="user-info" class="text-sm text-blue-500 mt-1 font-bold break-all">Autenticando...</p>
         </header>
 
         <!-- Loading Indicator -->
@@ -110,12 +110,19 @@
     <!-- Firebase Imports and Script -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // CORRIGIDO: Incluir signInWithCustomToken nas importações
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // ==============================================================================
+        // CONFIGURAÇÕES DO FIREBASE (CORRIGIDO PARA O AMBIENTE CANVAS)
+        // ==============================================================================
 
-        // --- Global Variables (Mandatory Canvas Globals) ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-mastery-tracker';
+        // 1. Configuração do Firebase (usando a configuração do ambiente Canvas para execução)
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        
+        // CORREÇÃO: Reintroduzir o ID da Aplicação do Canvas e o Token de Autenticação
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app;
@@ -124,7 +131,12 @@
         let userId = null;
         let isAuthReady = false;
 
-        const WORD_COLLECTION_PATH = `artifacts/${appId}/users/${userId}/mastery_tracker`;
+        // 2. Caminho da Coleção: Usando o CAMINHO COMPLETO E OBRIGATÓRIO do Canvas
+        const getWordCollectionPath = () => `artifacts/${appId}/users/${userId}/mastery_tracker`;
+
+        // ==============================================================================
+        // FIM DAS ALTERAÇÕES
+        // ==============================================================================
 
         // --- Spaced Repetition Logic ---
         // Defines the interval in days for the next review based on the current review number (0-indexed)
@@ -179,42 +191,24 @@
         // --- Firestore Operations ---
 
         /**
-         * Wait function to pause execution.
-         * @param {number} ms - milliseconds to wait.
-         */
-        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-        /**
          * Initializes Firebase and authenticates the user.
          */
         async function initializeFirebase() {
-            const MAX_RETRIES = 10;
-            let currentRetry = 0;
-
-            // Tenta carregar a configuração com backoff para maior robustez
-            while (Object.keys(firebaseConfig).length === 0 && currentRetry < MAX_RETRIES) {
-                console.warn(`[Firebase Init] Tentando carregar configuração... Tentativa ${currentRetry + 1}`);
-                currentRetry++;
-                await wait(500 * currentRetry); // Espera 500ms, 1000ms, 1500ms, etc.
-            }
             
             try {
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.error("[Firebase Init] Configuração não disponível após várias tentativas.");
-                    document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro: Falha ao carregar a configuração do Firebase após várias tentativas.</p>';
-                    return;
-                }
-
+                // 1. Inicializa o App
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
+                // 2. CORREÇÃO DA AUTENTICAÇÃO: Usar o token personalizado se existir, caso contrário, usar anónimo.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await signInAnonymously(auth);
                 }
 
+                // 3. Listener do Estado de Autenticação
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
@@ -223,9 +217,9 @@
                         document.getElementById('user-info').textContent = userId;
                         startListeningForWords();
                         document.getElementById('loading').classList.add('hidden');
+                        console.log("Autenticação e Listener do Firebase iniciados com sucesso.");
                     } else {
-                        document.getElementById('user-info').textContent = 'Usuário Anônimo. Dados salvos localmente.';
-                        // Fallback or guest mode logic could go here if Firestore fails.
+                        document.getElementById('user-info').textContent = 'Erro de Autenticação. Tente recarregar.';
                     }
                 });
 
@@ -260,7 +254,7 @@
             };
 
             try {
-                const wordsCollection = collection(db, `artifacts/${appId}/users/${userId}/mastery_tracker`);
+                const wordsCollection = collection(db, getWordCollectionPath());
                 await addDoc(wordsCollection, newWord);
                 console.log("Palavra adicionada com sucesso!");
             } catch (error) {
@@ -288,7 +282,7 @@
             };
 
             try {
-                const wordRef = doc(db, `artifacts/${appId}/users/${userId}/mastery_tracker`, wordId);
+                const wordRef = doc(db, getWordCollectionPath(), wordId);
                 await updateDoc(wordRef, updates);
                 console.log(`Revisão de ${wordId} completada. Próxima em ${nextReviewInterval} dias.`);
             } catch (error) {
@@ -303,7 +297,7 @@
             if (!isAuthReady) return;
             const updates = { [field]: value };
             try {
-                const wordRef = doc(db, `artifacts/${appId}/users/${userId}/mastery_tracker`, wordId);
+                const wordRef = doc(db, getWordCollectionPath(), wordId);
                 await updateDoc(wordRef, updates);
             } catch (error) {
                 console.error(`Erro ao atualizar encoding ${field}:`, error);
@@ -318,7 +312,7 @@
             // Usar modal customizado ao invés de confirm()
             if (!window.confirm_action("Tem certeza que deseja deletar esta palavra?")) return;
             try {
-                const wordRef = doc(db, `artifacts/${appId}/users/${userId}/mastery_tracker`, wordId);
+                const wordRef = doc(db, getWordCollectionPath(), wordId);
                 await deleteDoc(wordRef);
             } catch (error) {
                 console.error("Erro ao deletar palavra:", error);
@@ -340,7 +334,8 @@
         function startListeningForWords() {
             if (!isAuthReady) return;
 
-            const wordsCollection = collection(db, `artifacts/${appId}/users/${userId}/mastery_tracker`);
+            // Altera o caminho para usar a função de caminho dinâmico
+            const wordsCollection = collection(db, getWordCollectionPath());
             const q = query(wordsCollection);
 
             onSnapshot(q, (snapshot) => {
