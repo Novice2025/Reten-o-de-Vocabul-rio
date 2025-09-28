@@ -179,13 +179,29 @@
         // --- Firestore Operations ---
 
         /**
+         * Wait function to pause execution.
+         * @param {number} ms - milliseconds to wait.
+         */
+        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        /**
          * Initializes Firebase and authenticates the user.
          */
         async function initializeFirebase() {
+            const MAX_RETRIES = 10;
+            let currentRetry = 0;
+
+            // Tenta carregar a configuração com backoff para maior robustez
+            while (Object.keys(firebaseConfig).length === 0 && currentRetry < MAX_RETRIES) {
+                console.warn(`[Firebase Init] Tentando carregar configuração... Tentativa ${currentRetry + 1}`);
+                currentRetry++;
+                await wait(500 * currentRetry); // Espera 500ms, 1000ms, 1500ms, etc.
+            }
+            
             try {
                 if (Object.keys(firebaseConfig).length === 0) {
-                    console.error("Firebase configuration not available.");
-                    document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro: Configuração do Firebase não encontrada.</p>';
+                    console.error("[Firebase Init] Configuração não disponível após várias tentativas.");
+                    document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro: Falha ao carregar a configuração do Firebase após várias tentativas.</p>';
                     return;
                 }
 
