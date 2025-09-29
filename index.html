@@ -55,6 +55,9 @@
                     <label for="context-input" class="block text-sm font-medium text-gray-700">Contexto / Frase de Exemplo (Regra do Input Significativo):</label>
                     <textarea id="context-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" rows="2" placeholder="Ex: I found the solution serendipitously during a coffee break."></textarea>
                 </div>
+                <!-- NOVO: Mensagem de feedback (sucesso ou erro de duplicidade) -->
+                <div id="form-message" class="p-3 rounded-lg text-sm font-medium hidden" role="alert"></div>
+
                 <button type="submit" class="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150">
                     Adicionar Palavra (Início da Repetição Espaçada)
                 </button>
@@ -177,6 +180,26 @@
         const REPETITION_SCHEDULE = [1, 2, 4, 7, 30];
 
         // --- Utility Functions ---
+        
+        /**
+         * NOVO: Mostra uma mensagem de feedback temporária no formulário.
+         */
+        function showFormMessage(message, isError = false) {
+            const msgEl = document.getElementById('form-message');
+            msgEl.textContent = message;
+            msgEl.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+            
+            if (isError) {
+                msgEl.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                msgEl.classList.add('bg-green-100', 'text-green-800');
+            }
+
+            setTimeout(() => {
+                msgEl.classList.add('hidden');
+            }, 4000);
+        }
+
         function calculateNextReviewDay(currentReviewIndex) {
             if (currentReviewIndex >= REPETITION_SCHEDULE.length) {
                 return null; // Mastered
@@ -269,12 +292,25 @@
 
         /**
          * Adds a new word to the tracker.
+         * INCLUI VALIDAÇÃO DE DUPLICIDADE.
          */
         async function addWord(word, context) {
             if (!isAuthReady) {
                 console.error("Authentication not ready.");
+                showFormMessage("Erro de autenticação. Tente recarregar a página.", true);
                 return;
             }
+
+            const normalizedWord = word.trim().toLowerCase();
+            
+            // --- NOVO: VALIDAÇÃO DE DUPLICIDADE ---
+            // Verifica se a palavra (ignorando caixa) já existe no estado local allWords
+            const isDuplicate = allWords.some(item => item.word.toLowerCase() === normalizedWord);
+            if (isDuplicate) {
+                showFormMessage(`A palavra "${word.trim()}" já está na sua lista!`, true);
+                return;
+            }
+            // -------------------------------------
 
             const newWord = {
                 word: word.trim(),
@@ -295,9 +331,10 @@
                 const wordsCollection = collection(db, getWordCollectionPath());
                 await addDoc(wordsCollection, newWord);
                 console.log("Palavra adicionada com sucesso!");
+                showFormMessage("Palavra adicionada com sucesso!", false);
             } catch (error) {
                 console.error("Erro ao adicionar palavra:", error);
-                console.error("Erro ao salvar palavra. Tente novamente.");
+                showFormMessage("Erro ao salvar palavra. Tente novamente.", true);
             }
         }
 
@@ -548,9 +585,12 @@
 
                 if (word && context) {
                     addWord(word, context);
+                    // O reset só acontece se a palavra for adicionada com sucesso (dentro de addWord)
+                    // Por enquanto, mantenho o reset aqui para não mudar o comportamento se o addWord falhar,
+                    // mas showFormMessage dá o feedback em caso de duplicidade.
                     document.getElementById('add-word-form').reset();
                 } else {
-                    console.error('Erro: Por favor, preencha a palavra E o contexto.');
+                    showFormMessage('Erro: Por favor, preencha a palavra E o contexto.', true);
                 }
             };
 
