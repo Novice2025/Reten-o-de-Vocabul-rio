@@ -49,6 +49,17 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
+        .btn-icon {
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-icon:hover {
+            background-color: #e5e7eb;
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -90,16 +101,26 @@
             <h2 class="text-2xl font-bold mb-4 text-blue-700">2. Monitoramento de Retenção (Spaced Repetition)</h2>
             <p class="text-gray-600 mb-4">Seu vocabulário, classificado por urgência de revisão.</p>
 
-            <!-- Filtro de Visualização -->
-            <div class="mb-4 flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-4">
-                <label for="filter-view" class="font-medium text-gray-700">Filtro de Visualização:</label>
-                <select id="filter-view" class="input-style md:w-auto">
-                    <option value="all">Todas</option>
-                    <option value="today">Revisar Hoje</option>
-                    <option value="mastered">Dominadas</option>
-                </select>
-                <p id="total-words-count" class="text-sm text-gray-500"></p>
+            <!-- Controles e Filtro de Visualização -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between space-y-3 md:space-y-0 md:space-x-4 mb-4">
+                <div class="flex items-center space-x-4">
+                    <label for="filter-view" class="font-medium text-gray-700">Filtro de Visualização:</label>
+                    <select id="filter-view" class="input-style md:w-auto">
+                        <option value="all">Todas Ativas</option>
+                        <option value="today">Revisar Hoje</option>
+                        <option value="mastered">Dominadas</option>
+                        <option value="archived">Arquivadas</option> <!-- NOVO FILTRO -->
+                    </select>
+                </div>
+                <button id="export-csv-btn" class="button-primary bg-green-500 hover:bg-green-600 text-sm md:text-base">
+                    <span class="flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Exportar para Excel
+                    </span>
+                </button>
             </div>
+            
+            <p id="total-words-count" class="text-sm text-gray-500 mb-4"></p>
 
             <!-- Tabela de Vocabulário -->
             <div class="overflow-x-auto shadow-lg rounded-xl">
@@ -164,15 +185,26 @@
 
         // Variáveis globais (disponíveis no ambiente Canvas)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- Configuração do Firebase ---
+        let firebaseConfig = null;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+                firebaseConfig = JSON.parse(__firebase_config);
+            } catch (e) {
+                console.warn("Aviso: Falha ao analisar JSON para __firebase_config. Modo Local ativado.", e);
+            }
+        }
+        // --------------------------------
+
 
         // Instâncias Firebase
         let app, db, auth;
         let userId = null;
         let vocabData = [];
         let currentFilter = 'all';
-        let isFirebaseEnabled = false; // Novo estado para controlar o modo de salvamento
+        let isFirebaseEnabled = false; 
 
         // --- UTILS E UI HANDLERS ---
 
@@ -180,7 +212,6 @@
         function displayError(message) {
             const errorDiv = document.getElementById('error-message');
             const statusDiv = document.getElementById('status-message');
-            // Limpa a mensagem de status
             statusDiv.classList.add('hidden');
             
             errorDiv.textContent = `Erro FATAL: ${message}. Verifique o console para mais detalhes.`;
@@ -193,10 +224,8 @@
             const statusDiv = document.getElementById('status-message');
             const errorDiv = document.getElementById('error-message');
             
-            // Garante que a mensagem de erro esteja oculta ao mostrar o status
             errorDiv.classList.add('hidden');
             
-            // Redefine os estilos de status para o padrão (Amarelo/Azul - não modo local)
             statusDiv.classList.remove('bg-red-50', 'text-red-600', 'border-red-400');
             statusDiv.classList.add('bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
 
@@ -206,11 +235,21 @@
         
         /** Converte um objeto Timestamp do Firebase para uma string de data formatada. */
         function formatDate(timestamp) {
-            // A função é capaz de lidar tanto com objetos Date (local) quanto com Timestamps
             const date = timestamp instanceof Date ? timestamp : timestamp.toDate();
-            // Formato dd/mm/aaaa
             const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
             return date.toLocaleDateString('pt-BR', options);
+        }
+        
+        /** Sanitiza uma string para uso em CSV (tratando aspas e vírgulas). */
+        function sanitizeForCSV(value) {
+            if (value === null || value === undefined) return '';
+            const str = String(value);
+            // Se o valor contiver vírgula ou aspas, ele é envolvido em aspas duplas.
+            // Aspas duplas dentro do valor são escapadas com outra aspa dupla.
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
         }
 
         // --- LÓGICA DE REPETIÇÃO ESPAÇADA (SR) ---
@@ -222,9 +261,9 @@
 
             switch (currentLevel) {
                 case 1: daysToAdd = 1; break;   // Não Lembrei (0-1 dia)
-                case 3: daysToAdd = 7; break;   // Com Dificuldade (3-7 dias no botão, mas usaremos 7)
-                case 5: daysToAdd = 30; break;  // Fácil/Dominado (15+ dias no botão, mas usaremos 30)
-                default: daysToAdd = 1; // Nível 2 e 4 farão fallback para 1 dia, mas não são usados nos botões
+                case 3: daysToAdd = 7; break;   // Com Dificuldade (3-7 dias)
+                case 5: daysToAdd = 30; break;  // Fácil/Dominado (15+ dias)
+                default: daysToAdd = 1; 
             }
 
             now.setDate(now.getDate() + daysToAdd);
@@ -236,10 +275,11 @@
         const LOCAL_STORAGE_KEY = 'master_retention_vocab';
 
         function saveLocalVocab() {
-            // Prepara os dados para salvar (converte objetos Date para string ISO para armazenamento)
+            // Inclui a propriedade isArchived nos dados
             const serializableData = vocabData.map(item => ({
                 ...item,
                 reviewDate: item.reviewDate.toISOString(),
+                isArchived: item.isArchived || false, // Garante que isArchived seja salvo
             }));
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(serializableData));
             displayStatus("Dados salvos localmente.", true);
@@ -251,8 +291,9 @@
                 if (data) {
                     vocabData = JSON.parse(data).map(item => ({
                         ...item,
-                        reviewDate: new Date(item.reviewDate), // Converte a string ISO de volta para Date
+                        reviewDate: new Date(item.reviewDate), 
                         level: item.level || 1, 
+                        isArchived: item.isArchived || false, // Carrega o novo campo
                     }));
                 } else {
                     vocabData = [];
@@ -276,6 +317,7 @@
                 context,
                 reviewDate: nextReview,
                 level: 1,
+                isArchived: false, // NOVO CAMPO
                 createdAt: new Date(),
             };
             vocabData.push(newItem);
@@ -292,6 +334,18 @@
                 renderVocabList();
             }
         }
+        
+        function archiveWordLocal(vocabId) {
+            const index = vocabData.findIndex(item => item.id === vocabId);
+            if (index > -1) {
+                vocabData[index].isArchived = true; // Marca como arquivado
+                vocabData[index].level = 5; // Assumimos que foi dominado para ser arquivado
+                vocabData[index].reviewDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Revisão em 1 ano
+                saveLocalVocab();
+                renderVocabList();
+            }
+        }
+
 
         function deleteWordLocal(vocabId) {
             const initialLength = vocabData.length;
@@ -303,8 +357,12 @@
         }
 
         // --- FIREBASE E AUTENTICAÇÃO ---
+        // (Funções de Autenticação e Listener mantidas inalteradas)
+        // ... [setupAuthListener, attemptAuthentication, setupDataListener] ...
+        
+        // As funções abaixo são placeholders para o modo Firebase, mas a lógica principal
+        // é paralela às funções Local Storage
 
-        /** Tenta a autenticação usando o token ou anonimamente. */
         async function attemptAuthentication() {
             try {
                 displayStatus("Autenticando...");
@@ -314,13 +372,11 @@
                     await signInAnonymously(auth);
                 }
             } catch (error) {
-                // Erro de autenticação é fatal no modo Firebase, mas a inicialização já tratou a falta de config
                 displayError(`Falha na autenticação: ${error.message}`);
                 console.error("Erro ao autenticar:", error);
             }
         }
 
-        /** Configura o listener de autenticação e carrega os dados. */
         function setupAuthListener() {
             onAuthStateChanged(auth, (user) => {
                 if (user) {
@@ -335,17 +391,13 @@
                     document.getElementById('add-word-btn').disabled = true;
                     displayStatus("Usuário não autenticado. Apenas o modo anônimo está disponível.", true);
                     
-                    // CORREÇÃO: A linha de loading-row é removida quando renderVocabList é executada.
-                    // Para evitar o erro "Cannot set properties of null", modificamos o container (tbody) diretamente.
                     const container = document.getElementById('vocab-list');
                     container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Faça login para salvar seu progresso.</td></tr>`;
                 }
             });
         }
 
-        /** Configura o listener em tempo real para o vocabulário (onSnapshot). */
         function setupDataListener() {
-            // Caminho da coleção privada do usuário: /artifacts/{appId}/users/{userId}/vocab
             const vocabColRef = collection(db, `artifacts/${appId}/users/${userId}/vocab`);
             const q = query(vocabColRef);
 
@@ -353,21 +405,23 @@
                 vocabData = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
-                    reviewDate: doc.data().reviewDate.toDate(), // Converte Firestore Timestamp para Data JS
-                    level: doc.data().level || 1, // Garante que o nível exista
+                    reviewDate: doc.data().reviewDate.toDate(), 
+                    level: doc.data().level || 1, 
+                    isArchived: doc.data().isArchived || false, // Carrega o novo campo
                 }));
                 
                 displayStatus("Dados de vocabulário atualizados.", true);
                 renderVocabList();
             }, (error) => {
                 displayError(`Erro ao ouvir dados do Firestore: ${error.message}`);
-                document.getElementById('loading-row').textContent = 'Erro ao carregar dados.';
+                const container = document.getElementById('vocab-list');
+                container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-500">Erro ao carregar dados.</td></tr>`;
             });
         }
 
+
         // --- FUNÇÕES CRUD E INTERAÇÃO ---
 
-        /** Adiciona uma nova palavra (usa Firestore ou Local Storage). */
         async function addWord() {
             const word = document.getElementById('new-word').value.trim();
             const context = document.getElementById('new-context').value.trim();
@@ -390,6 +444,7 @@
                         context,
                         reviewDate: nextReview,
                         level: 1,
+                        isArchived: false, // NOVO CAMPO
                         createdAt: new Date(),
                     });
                     
@@ -404,7 +459,6 @@
             }
         }
 
-        /** Atualiza o nível de retenção de uma palavra após o desafio (usa Firestore ou Local Storage). */
         async function updateWordRetention(vocabId, newLevel) {
             if (isFirebaseEnabled) {
                 // Lógica FIREBASE
@@ -427,8 +481,33 @@
                 displayStatus(`Progresso atualizado (local). Próxima revisão: ${formatDate(nextReviewDate)}.`, true);
             }
         }
+        
+        /** NOVO: Arquiva uma palavra (move para isArchived: true) */
+        async function archiveWord(vocabId) {
+            if (!confirm("Tem certeza que deseja arquivar esta palavra? Ela será considerada dominada e movida para o filtro 'Arquivadas'.")) return;
+            
+            if (isFirebaseEnabled) {
+                // Lógica FIREBASE
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
+                const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Revisão em 1 ano
+                try {
+                    await updateDoc(docRef, {
+                        isArchived: true,
+                        level: 5,
+                        reviewDate: futureDate,
+                    });
+                    displayStatus("Palavra arquivada com sucesso.", true);
+                } catch (error) {
+                    displayError(`Erro ao arquivar palavra (Firebase): ${error.message}`);
+                }
+            } else {
+                // Lógica LOCAL STORAGE
+                archiveWordLocal(vocabId);
+                displayStatus("Palavra arquivada com sucesso (local).", true);
+            }
+        }
 
-        /** Remove uma palavra do Firestore (usa Firestore ou Local Storage). */
+
         async function deleteWord(vocabId) {
             if (!confirm("Tem certeza que deseja remover esta palavra?")) return;
             
@@ -448,6 +527,42 @@
             }
         }
 
+        /** NOVO: Exporta todos os dados de vocabulário para CSV/Excel. */
+        function exportToCSV() {
+            if (vocabData.length === 0) {
+                displayStatus("Não há dados para exportar.", false);
+                return;
+            }
+
+            const headers = ["Palavra", "Contexto", "Próxima Revisão", "Nível", "Arquivado?", "Criado Em"];
+            let csv = headers.map(h => sanitizeForCSV(h)).join(',') + '\n';
+
+            vocabData.forEach(item => {
+                const row = [
+                    sanitizeForCSV(item.word),
+                    sanitizeForCSV(item.context),
+                    sanitizeForCSV(formatDate(item.reviewDate)),
+                    item.level,
+                    item.isArchived ? "Sim" : "Não",
+                    sanitizeForCSV(formatDate(item.createdAt))
+                ];
+                csv += row.join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", "vocabulario_engenharia_memoria.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            displayStatus("Dados exportados para vocabulario_engenharia_memoria.csv!", false);
+        }
+
         // --- RENDERIZAÇÃO DA INTERFACE ---
 
         /** Renderiza a lista de vocabulário na tabela. */
@@ -458,46 +573,60 @@
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            // Filtrar e ordenar dados (ordenar localmente para evitar problemas de índice no Firestore)
+            // Filtrar dados
             let filteredData = vocabData;
             
             if (currentFilter === 'today') {
-                filteredData = vocabData.filter(item => item.reviewDate <= today);
+                // Revisar Hoje: Data <= Hoje E NÃO arquivado
+                filteredData = vocabData.filter(item => item.reviewDate <= today && !item.isArchived);
             } else if (currentFilter === 'mastered') {
-                // Considera dominado como nível 5 ou mais
-                filteredData = vocabData.filter(item => item.level >= 5);
+                // Dominadas: Nível 5 ou mais E NÃO arquivado
+                filteredData = vocabData.filter(item => item.level >= 5 && !item.isArchived);
+            } else if (currentFilter === 'archived') {
+                // Arquivadas: Apenas itens arquivados
+                filteredData = vocabData.filter(item => item.isArchived);
+            } else { // 'all' (Todas Ativas)
+                // Todas Ativas: NÃO arquivado
+                filteredData = vocabData.filter(item => !item.isArchived);
             }
 
             // Ordenar por data de revisão (mais urgente primeiro)
             filteredData.sort((a, b) => a.reviewDate.getTime() - b.reviewDate.getTime());
             
-            document.getElementById('total-words-count').textContent = `Total: ${vocabData.length} palavras. Mostrando: ${filteredData.length}.`;
+            document.getElementById('total-words-count').textContent = `Total Geral: ${vocabData.length} palavras. Mostrando: ${filteredData.length}.`;
 
             if (filteredData.length === 0) {
                 container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Nenhuma palavra encontrada neste filtro.</td></tr>`;
-                // REMOVIDO: document.getElementById('loading-row').textContent = ''; 
-                // A linha de loading-row é removida quando container.innerHTML é limpo/substituído. 
-                // A tentativa de acessá-la aqui causava o erro "Cannot set properties of null".
                 return;
             }
 
             filteredData.forEach(item => {
-                const isUrgent = item.reviewDate <= today;
-                const rowClass = isUrgent ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50';
-                const reviewText = isUrgent ? `<span class="font-bold text-red-600">REVISAR HOJE</span>` : formatDate(item.reviewDate);
+                const isUrgent = item.reviewDate <= today && !item.isArchived;
+                const rowClass = item.isArchived ? 'bg-gray-100 italic hover:bg-gray-200' : 
+                                 (isUrgent ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50');
+                const reviewText = item.isArchived ? `<span class="text-gray-500">Arquivada</span>` : 
+                                 (isUrgent ? `<span class="font-bold text-red-600">REVISAR HOJE</span>` : formatDate(item.reviewDate));
+                const levelText = item.isArchived ? 'Dominado' : `Nível ${item.level}`;
+
+                const recallButton = item.isArchived ? `<span class="text-gray-400 text-sm">Pronta para o Excel</span>` : 
+                                     `<button data-id="${item.id}" class="recall-trigger text-sm text-blue-600 hover:text-blue-800 font-medium">Desafiar Memória</button>`;
+                
+                const archiveButton = item.isArchived ? '' : `
+                    <button data-id="${item.id}" title="Arquivar (Dominada)" class="archive-trigger text-gray-500 hover:text-green-600 transition btn-icon">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 5h-2"></path></svg>
+                    </button>
+                `;
+
 
                 const row = `
                     <tr class="border-b ${rowClass}">
                         <td class="p-3 font-semibold text-gray-800">${item.word}</td>
                         <td class="p-3 text-sm">${reviewText}</td>
-                        <td class="p-3 text-sm hidden sm:table-cell">Nível ${item.level}</td>
-                        <td class="p-3">
-                            <button data-id="${item.id}" class="recall-trigger text-sm text-blue-600 hover:text-blue-800 font-medium">
-                                Desafiar Memória
-                            </button>
-                        </td>
-                        <td class="p-3">
-                            <button data-id="${item.id}" class="delete-trigger text-red-500 hover:text-red-700 transition">
+                        <td class="p-3 text-sm hidden sm:table-cell">${levelText}</td>
+                        <td class="p-3">${recallButton}</td>
+                        <td class="p-3 flex items-center space-x-2">
+                            ${archiveButton}
+                            <button data-id="${item.id}" title="Remover" class="delete-trigger text-red-500 hover:text-red-700 transition btn-icon">
                                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd"></path></svg>
                             </button>
                         </td>
@@ -513,15 +642,18 @@
             document.querySelectorAll('.delete-trigger').forEach(btn => {
                 btn.addEventListener('click', (e) => deleteWord(e.currentTarget.dataset.id));
             });
+            document.querySelectorAll('.archive-trigger').forEach(btn => { // NOVO LISTENER
+                btn.addEventListener('click', (e) => archiveWord(e.currentTarget.dataset.id));
+            });
         }
         
-        // --- LÓGICA DO MODAL DE RECALL ---
+        // --- LÓGICA DO MODAL DE RECALL (MANTIDA) ---
         
         let activeVocabId = null;
 
         function openRecallModal(vocabId) {
             const item = vocabData.find(v => v.id === vocabId);
-            if (!item) return;
+            if (!item || item.isArchived) return; // Não abre para arquivados
 
             activeVocabId = vocabId;
             
@@ -552,7 +684,6 @@
                     isFirebaseEnabled = false;
                     document.getElementById('user-id').textContent = 'SALVAMENTO LOCAL (Não persistente)';
                     
-                    // Exibe aviso não-fatal na área de status com estilo de alerta.
                     const statusDiv = document.getElementById('status-message');
                     statusDiv.classList.remove('hidden', 'bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
                     statusDiv.classList.add('bg-red-50', 'text-red-600', 'border-red-400');
@@ -567,16 +698,12 @@
 
                 // MODO FIREBASE
                 isFirebaseEnabled = true;
-                // 1. Inicializa Firebase
                 setLogLevel('Debug');
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 2. Configura listener de autenticação (isso dispara o carregamento de dados)
                 setupAuthListener();
-
-                // 3. Tenta autenticar
                 await attemptAuthentication();
 
             } catch (error) {
@@ -590,6 +717,9 @@
             initializeAppAndFirebase();
             
             document.getElementById('add-word-btn').addEventListener('click', addWord);
+            
+            // NOVO LISTENER para Exportar
+            document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
             
             document.getElementById('filter-view').addEventListener('change', (e) => {
                 currentFilter = e.target.value;
@@ -606,7 +736,6 @@
             document.querySelectorAll('.recall-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const level = parseInt(e.target.dataset.level, 10);
-                    // Os níveis de 1, 3, 5 são usados diretamente na função calculateNextReviewDate
                     updateWordRetention(activeVocabId, level);
                     closeRecallModal();
                 });
