@@ -35,6 +35,7 @@
             <!-- Informação do Usuário -->
             <p class="text-sm text-gray-600 mt-2 font-medium">Seu progresso é salvo automaticamente neste ID de Usuário (salvo no seu Firestore):</p>
             <p id="user-info" class="text-sm text-blue-500 mt-1 font-bold break-all">Autenticando...</p>
+            <p id="auth-status" class="text-xs text-gray-500 mt-1">Verificando status de autenticação...</p> <!-- NOVO: Status do Token -->
         </header>
 
         <!-- Loading Indicator -->
@@ -73,9 +74,10 @@
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-3 sm:space-y-0">
                 <p class="text-md font-medium text-gray-700">Filtro de Visualização:</p>
                 <div id="filter-controls" class="flex flex-wrap gap-2">
-                    <button data-filter="all" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-gray-700 text-white shadow-md transition duration-150">Todas</button>
-                    <button data-filter="due" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-yellow-500 text-white shadow-md hover:bg-yellow-600 transition duration-150">Revisar Hoje</button>
-                    <button data-filter="mastered" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-green-500 text-white shadow-md hover:bg-green-600 transition duration-150">Dominadas</button>
+                    <!-- Buttons are styled and managed by JS in applyFilterAndRender -->
+                    <button data-filter="all" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
+                    <button data-filter="due" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
+                    <button data-filter="mastered" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
                 </div>
             </div>
             
@@ -304,6 +306,15 @@
          */
         async function initializeFirebase() {
             try {
+                // NOVO: Exibe o status inicial do token
+                const authStatusEl = document.getElementById('auth-status');
+                if (initialAuthToken) {
+                    authStatusEl.textContent = 'Status: Token Recebido (Autenticação Customizada)';
+                } else {
+                    authStatusEl.textContent = 'Status: Token Ausente (Tentando Login Anônimo)';
+                    authStatusEl.classList.add('text-red-500'); // Destaca se não houver token
+                }
+
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -321,11 +332,18 @@
                         userId = user.uid;
                         isAuthReady = true;
                         document.getElementById('user-info').textContent = userId;
+                        // Atualiza o status após o login
+                        authStatusEl.textContent = `Login: ${initialAuthToken ? 'Customizado' : 'Anônimo'} | UID: ${userId.substring(0, 10)}...`;
+                        authStatusEl.classList.remove('text-red-500');
+                        authStatusEl.classList.add('text-green-600');
                         startListeningForWords();
                         document.getElementById('loading').classList.add('hidden');
                         console.log("Autenticação e Listener do Firebase iniciados com sucesso.");
                     } else {
-                        document.getElementById('user-info').textContent = 'Erro de Autenticação. Tente recarregar.';
+                        document.getElementById('user-info').textContent = 'Erro de Autenticação.';
+                        authStatusEl.textContent = 'Erro: Falha no Login (Verifique Regras)';
+                        authStatusEl.classList.remove('text-green-600');
+                        authStatusEl.classList.add('text-red-600');
                     }
                 });
 
@@ -379,9 +397,6 @@
 
         /**
          * Updates a word's spaced repetition status based on difficulty.
-         * @param {string} wordId - ID do documento.
-         * @param {number} currentReviewCount - Contagem de revisões atual.
-         * @param {string} difficulty - 'easy' (Lembrei) ou 'hard' (Não Lembrei).
          */
         async function completeReview(wordId, currentReviewCount, difficulty) {
             if (!isAuthReady) return;
@@ -525,9 +540,10 @@
                 
             }, (error) => {
                 console.error("Erro ao ouvir updates do Firestore:", error);
+                // ESTE É O ERRO CRÍTICO A SER MONITORADO
                 if (error.code === 'permission-denied') {
                     console.error("🚨 ERRO CRÍTICO: PERMISSÃO NEGADA (RULES). As regras do Firestore não permitem este acesso.");
-                    document.getElementById('loading').innerHTML = '<p class="text-red-600 font-bold">ERRO: Permissão Negada. Verifique as Regras do Firestore.</p>';
+                    document.getElementById('loading').innerHTML = '<p class="text-red-600 font-bold">ERRO: Permissão Negada. Por favor, verifique as Regras de Segurança do Firestore e recarregue.</p>';
                 } else {
                     document.getElementById('loading').innerHTML = `<p class="text-red-600">Erro de Conexão: ${error.code}</p>`;
                 }
@@ -540,19 +556,32 @@
         function applyFilterAndRender(filter = currentFilter) {
             currentFilter = filter;
             
-            // 1. Atualiza o estilo dos botões
+            // 1. Atualiza o estilo e o texto dos botões
             document.querySelectorAll('.filter-btn').forEach(btn => {
+                const filterType = btn.dataset.filter;
                 btn.classList.remove('bg-gray-700', 'bg-blue-600', 'hover:bg-blue-700', 'bg-yellow-500', 'hover:bg-yellow-600', 'bg-green-500', 'hover:bg-green-600');
                 btn.classList.add('text-white');
                 
-                if (btn.dataset.filter === filter) {
-                    btn.classList.add('bg-gray-700'); 
-                } else {
-                    if (btn.dataset.filter === 'all') {
+                if (filterType === 'all') {
+                    btn.textContent = 'Todas';
+                    if (filter === 'all') {
+                        btn.classList.add('bg-gray-700'); 
+                    } else {
                         btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                    } else if (btn.dataset.filter === 'due') {
+                    }
+                } else if (filterType === 'due') {
+                    const dueCount = allWords.filter(word => isReviewDue(word.lastReviewDate, word.nextReviewDay)).length;
+                    btn.textContent = `Revisar Hoje (${dueCount})`;
+                    if (filter === 'due') {
+                        btn.classList.add('bg-gray-700');
+                    } else {
                         btn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-                    } else if (btn.dataset.filter === 'mastered') {
+                    }
+                } else if (filterType === 'mastered') {
+                    btn.textContent = 'Dominadas';
+                    if (filter === 'mastered') {
+                        btn.classList.add('bg-gray-700');
+                    } else {
                         btn.classList.add('bg-green-500', 'hover:bg-green-600');
                     }
                 }
@@ -696,6 +725,7 @@
             // EDIT Modal Event Listener (NOVO)
             document.querySelectorAll('.edit-btn').forEach(btn => {
                 btn.onclick = (e) => {
+                    // Busca a palavra inteira no estado global 'allWords'
                     const word = allWords.find(w => w.id === e.target.dataset.wordId);
                     if (word) {
                         openEditModal(word);
