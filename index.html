@@ -3,833 +3,492 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plano Mestre de Retenção de Vocabulário</title>
+    <title>Plano Mestre de Retenção: Engenharia da Memória para o Inglês</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f0f4f8; /* Light blue-gray background */
+            background-color: #f7f7f7;
+            color: #1f2937;
         }
         .card {
-            background-color: #ffffff;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            background-color: white;
             padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            transition: transform 0.3s ease;
         }
-        /* Status Badges */
-        .review-status-urgent { background-color: #fee2e2; color: #b91c1c; font-weight: 600; }
-        .review-status-due { background-color: #fef3c7; color: #d97706; font-weight: 600; }
-        .review-status-mastered { background-color: #d1fae5; color: #059669; font-weight: 600; }
-        .review-status-ok { background-color: #dbeafe; color: #2563eb; font-weight: 600; }
+        .button-primary {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .button-primary:hover {
+            background-color: #2563eb;
+            transform: translateY(-1px);
+        }
+        .button-primary:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .input-style {
+            padding: 0.6rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-style:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
     </style>
 </head>
-<body class="min-h-screen p-4 sm:p-8">
-
-    <!-- Main Container -->
-    <div class="max-w-7xl mx-auto">
-        <header class="text-center mb-10">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-800 mb-2">Plano Mestre de Retenção</h1>
-            <p class="text-lg text-gray-600">Engenharia da Memória para o Inglês. Adeus, Decoreba!</p>
-            <!-- Informação do Usuário -->
-            <p class="text-sm text-gray-600 mt-2 font-medium">Seu progresso é salvo automaticamente neste ID de Usuário (salvo no seu Firestore):</p>
-            <p id="user-info" class="text-sm text-blue-500 mt-1 font-bold break-all">Autenticando...</p>
-            <p id="auth-status" class="text-xs text-gray-500 mt-1">Verificando status de autenticação...</p> <!-- NOVO: Status do Token -->
+<body class="min-h-screen p-4 md:p-8">
+    <div id="app-container" class="max-w-4xl mx-auto space-y-8">
+        <!-- Título e Status de Autenticação -->
+        <header class="text-center">
+            <h1 class="text-4xl font-extrabold text-blue-800">Plano Mestre de Retenção</h1>
+            <p class="text-xl text-gray-600 mt-1">Engenharia da Memória para o Inglês. Adeus, Decoreba!</p>
+            <div id="auth-status" class="mt-4 p-3 rounded-lg shadow-md bg-white text-gray-700">
+                <p>Seu progresso é salvo automaticamente neste ID de Usuário (salvo no seu Firestore):</p>
+                <div id="user-id" class="font-mono text-sm mt-1 break-all">Aguardando autenticação...</div>
+            </div>
         </header>
 
-        <!-- Loading Indicator -->
-        <div id="loading" class="text-center p-8 hidden">
-            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4 mx-auto" style="border-top-color: #2563eb;"></div>
-            <p class="text-blue-600">Carregando dados e autenticando...</p>
-        </div>
+        <!-- Área de Mensagens de Erro/Status -->
+        <div id="status-message" class="card hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700"></div>
+        <div id="error-message" class="card hidden bg-red-100 border-l-4 border-red-500 text-red-700"></div>
 
-        <!-- Add New Word Form -->
-        <div id="input-section" class="card mb-8">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">1. Adicionar Vocabulário com Contexto</h2>
-            <form id="add-word-form" class="space-y-4">
+        <!-- 1. Adicionar Vocabulário com Contexto -->
+        <section class="card">
+            <h2 class="text-2xl font-bold mb-4 text-blue-700">1. Adicionar Vocabulário com Contexto</h2>
+            <div class="space-y-4">
                 <div>
-                    <label for="word-input" class="block text-sm font-medium text-gray-700">Palavra/Frase:</label>
-                    <input type="text" id="word-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                    <label for="new-word" class="block text-sm font-medium text-gray-700 mb-1">Palavra/Frase:</label>
+                    <input type="text" id="new-word" class="input-style" placeholder="Ex: 'Ephemeral' ou 'To call it a day'">
                 </div>
                 <div>
-                    <label for="context-input" class="block text-sm font-medium text-gray-700">Contexto / Frase de Exemplo (Regra do Input Significativo):</label>
-                    <textarea id="context-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" rows="2" placeholder="Ex: I found the solution serendipitously during a coffee break."></textarea>
+                    <label for="new-context" class="block text-sm font-medium text-gray-700 mb-1">Contexto / Frase de Exemplo (Regra do Input Significativo):</label>
+                    <input type="text" id="new-context" class="input-style" placeholder="Ex: 'The beauty of the cherry blossoms is ephemeral.'">
                 </div>
-                <!-- Mensagem de feedback (sucesso ou erro de duplicidade) -->
-                <div id="form-message" class="p-3 rounded-lg text-sm font-medium hidden" role="alert"></div>
-
-                <button type="submit" class="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150">
+                <button id="add-word-btn" class="button-primary w-full" disabled>
                     Adicionar Palavra (Início da Repetição Espaçada)
                 </button>
-            </form>
-        </div>
-
-        <!-- Mastery Tracker Table -->
-        <div id="tracker-section" class="card overflow-x-auto">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">2. Monitoramento de Retenção (Spaced Repetition)</h2>
-            <p class="text-sm text-gray-500 mb-4">Seu vocabulário, classificado por urgência de revisão.</p>
-            
-            <!-- Filter Controls -->
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-3 sm:space-y-0">
-                <p class="text-md font-medium text-gray-700">Filtro de Visualização:</p>
-                <div id="filter-controls" class="flex flex-wrap gap-2">
-                    <!-- Buttons are styled and managed by JS in applyFilterAndRender -->
-                    <button data-filter="all" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
-                    <button data-filter="due" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
-                    <button data-filter="mastered" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold text-white shadow-md transition duration-150"></button>
-                </div>
             </div>
-            
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead>
-                    <tr>
-                        <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Palavra</th>
-                        <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Próxima Revisão</th>
-                        <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Encoding (Multisensorial)</th>
-                        <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Desafio (Recall)</th>
-                        <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="word-list" class="bg-white divide-y divide-gray-200">
-                    <!-- Word rows will be dynamically inserted here -->
-                </tbody>
-            </table>
+        </section>
 
-            <div id="empty-state" class="text-center p-8 text-gray-500 hidden">
-                Nenhuma palavra cadastrada ainda. Adicione uma nova palavra acima!
+        <!-- 2. Monitoramento de Retenção (Spaced Repetition) -->
+        <section class="card">
+            <h2 class="text-2xl font-bold mb-4 text-blue-700">2. Monitoramento de Retenção (Spaced Repetition)</h2>
+            <p class="text-gray-600 mb-4">Seu vocabulário, classificado por urgência de revisão.</p>
+
+            <!-- Filtro de Visualização -->
+            <div class="mb-4 flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-4">
+                <label for="filter-view" class="font-medium text-gray-700">Filtro de Visualização:</label>
+                <select id="filter-view" class="input-style md:w-auto">
+                    <option value="all">Todas</option>
+                    <option value="today">Revisar Hoje</option>
+                    <option value="mastered">Dominadas</option>
+                </select>
+                <p id="total-words-count" class="text-sm text-gray-500"></p>
             </div>
-        </div>
 
-        <!-- CONTEXT MODAL for Retrieval Practice (Updated with Difficulty Buttons) -->
-        <div id="context-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
-            <div class="bg-white card max-w-lg w-full">
-                <h3 class="text-xl font-bold mb-4 text-blue-700">Prática de Recuperação Ativa (Retrieval Practice)</h3>
-                <p class="text-gray-700 mb-4">Lembre-se do significado e do contexto desta palavra:</p>
-                
-                <!-- Palavra Desafiada -->
-                <div class="p-4 bg-gray-100 rounded-t-md">
-                    <p class="text-2xl font-extrabold text-gray-900" id="modal-word"></p>
-                </div>
-                
-                <!-- Input do Usuário (Active Recall) -->
-                <div id="modal-recall-input-container" class="p-4 pt-2 border-x border-b rounded-b-md mb-4">
-                    <label for="user-answer-input" class="block text-sm font-semibold text-gray-700 mb-2">Sua Resposta (Tente escrever o contexto):</label>
-                    <textarea id="user-answer-input" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 p-2 border" rows="3" placeholder="Digite aqui o que você lembra sobre o significado e uso desta palavra."></textarea>
-                </div>
-
-                <!-- Contexto Oculto / Resposta Correta -->
-                <div id="modal-hidden-context" class="mt-2 p-4 bg-yellow-50 rounded-md border border-yellow-200 hidden mb-4">
-                    <p class="text-sm font-semibold text-gray-700">Resposta Correta / Contexto:</p>
-                    <p id="modal-context" class="text-base italic text-gray-800 mt-1"></p>
-                </div>
-
-                <!-- Botões de Ação (Com base no estado do Recall) -->
-                <div id="modal-action-buttons">
-                    <button id="reveal-answer-btn" class="w-full px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 mb-2 transition duration-150">
-                        Revelar Resposta e Comparar
-                    </button>
-                    <!-- Botões de Dificuldade (Hidden by default) -->
-                    <div id="difficulty-buttons" class="hidden flex justify-between space-x-2 mt-4">
-                        <button data-difficulty="hard" class="review-btn w-1/2 px-4 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-150">
-                            Não Lembrei (Difícil)
-                        </button>
-                        <button data-difficulty="easy" class="review-btn w-1/2 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-150">
-                            Lembrei (Fácil)
-                        </button>
-                    </div>
-
-                    <button id="close-modal-btn" class="w-full px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-400 mt-2 transition duration-150">
-                        Fechar Modal
-                    </button>
-                </div>
+            <!-- Tabela de Vocabulário -->
+            <div class="overflow-x-auto shadow-lg rounded-xl">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-blue-500 text-white">
+                        <tr>
+                            <th class="p-3 text-left">Palavra</th>
+                            <th class="p-3 text-left w-1/4">Próxima Revisão</th>
+                            <th class="p-3 text-left hidden sm:table-cell">Nível</th>
+                            <th class="p-3 text-left">Desafio (Recall)</th>
+                            <th class="p-3 text-left">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vocab-list">
+                        <!-- Itens serão inseridos aqui pelo JavaScript -->
+                        <tr id="loading-row">
+                            <td colspan="5" class="p-4 text-center text-gray-500">
+                                Carregando vocabulário...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </div>
-        
-        <!-- EDIT WORD MODAL (NOVO) -->
-        <div id="edit-word-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
-            <div class="bg-white card max-w-lg w-full">
-                <h3 class="text-xl font-bold mb-4 text-orange-600">Editar Vocabulário</h3>
-                <form id="edit-word-form" class="space-y-4">
-                    <input type="hidden" id="edit-word-id">
-                    <div>
-                        <label for="edit-word-input" class="block text-sm font-medium text-gray-700">Palavra/Frase:</label>
-                        <input type="text" id="edit-word-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 p-2 border">
-                    </div>
-                    <div>
-                        <label for="edit-context-input" class="block text-sm font-medium text-gray-700">Contexto / Frase de Exemplo:</label>
-                        <textarea id="edit-context-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 p-2 border" rows="3"></textarea>
-                    </div>
-                    
-                    <div id="edit-form-message" class="p-3 rounded-lg text-sm font-medium hidden" role="alert"></div>
-
-                    <div class="flex justify-end space-x-3 pt-4">
-                        <button type="button" id="cancel-edit-btn" class="px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition duration-150">
-                            Cancelar
-                        </button>
-                        <button type="submit" class="px-4 py-2 bg-orange-600 text-white font-semibold rounded-lg shadow-md hover:bg-orange-700 transition duration-150">
-                            Salvar Alterações
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- DELETE CONFIRMATION MODAL -->
-        <div id="delete-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
-            <div class="bg-white card max-w-sm w-full">
-                <h3 class="text-xl font-bold mb-4 text-red-600">Confirmação de Exclusão</h3>
-                <p class="text-gray-700 mb-6">Tem certeza que deseja deletar permanentemente a palavra <span id="word-to-delete" class="font-bold"></span>?</p>
-                <div class="flex justify-end space-x-3">
-                    <button id="cancel-delete-btn" class="px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition duration-150">
-                        Cancelar
-                    </button>
-                    <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-150">
-                        Deletar
-                    </button>
-                </div>
-            </div>
-        </div>
-        
+        </section>
     </div>
 
-    <!-- Firebase Imports and Script -->
-    <script type="module">
-        import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // ==============================================================================
-        // CONFIGURAÇÕES DO FIREBASE
-        // ==============================================================================
+    <!-- Modal para o Desafio de Recall -->
+    <div id="recall-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+        <div class="card w-full max-w-lg space-y-4">
+            <h3 class="text-xl font-bold text-blue-700">Desafio de Recall</h3>
+            <p class="text-gray-700">Tente lembrar do significado e do contexto da palavra abaixo:</p>
+            
+            <div class="border-2 border-dashed border-blue-300 bg-blue-50 p-4 rounded-lg">
+                <p class="text-2xl font-extrabold text-blue-900" id="modal-word"></p>
+            </div>
 
-        // 1. Configuração do Firebase
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        
-        // Variáveis do Ambiente Canvas
+            <button id="show-answer-btn" class="button-primary w-full">Revelar Resposta</button>
+            
+            <div id="answer-area" class="space-y-3 hidden">
+                <p class="text-gray-700">Contexto/Exemplo:</p>
+                <div class="p-3 bg-gray-100 rounded-lg italic text-gray-800" id="modal-context"></div>
+                
+                <p class="font-bold mt-4">Você se lembrou?</p>
+                <div class="flex space-x-3">
+                    <button data-level="1" class="recall-btn flex-1 p-3 text-white rounded-lg font-semibold bg-red-500 hover:bg-red-600 transition">Não Lembrei (0-1 dia)</button>
+                    <button data-level="3" class="recall-btn flex-1 p-3 text-white rounded-lg font-semibold bg-yellow-500 hover:bg-yellow-600 transition">Com Dificuldade (3-7 dias)</button>
+                    <button data-level="5" class="recall-btn flex-1 p-3 text-white rounded-lg font-semibold bg-green-500 hover:bg-green-600 transition">Fácil/Dominado (15+ dias)</button>
+                </div>
+            </div>
+            
+            <button id="close-modal-btn" class="text-gray-500 hover:text-gray-800 transition mt-2 w-full">Fechar</button>
+        </div>
+    </div>
+
+
+    <!-- Firebase & App Logic -->
+    <script type="module">
+        // Importa módulos Firebase (versão 11.6.1 ou superior)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, query, onSnapshot, setLogLevel, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variáveis globais (disponíveis no ambiente Canvas)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        let app;
-        let db;
-        let auth;
+        // Instâncias Firebase
+        let app, db, auth;
         let userId = null;
-        let isAuthReady = false;
+        let vocabData = [];
+        let currentFilter = 'all';
 
-        // ESTADO GLOBAL DO APLICATIVO
-        let allWords = []; 
-        let currentFilter = 'all'; 
-        let currentReviewWord = null; // Para rastrear a palavra no modal de desafio
+        // --- UTILS E UI HANDLERS ---
 
-        // 2. Caminho da Coleção: Usando o CAMINHO COMPLETO E OBRIGATÓRIO do Canvas
-        const getWordCollectionPath = () => `artifacts/${appId}/users/${userId}/mastery_tracker`;
+        /** Exibe mensagens de erro em uma div dedicada, substituindo alert(). */
+        function displayError(message) {
+            const errorDiv = document.getElementById('error-message');
+            const statusDiv = document.getElementById('status-message');
+            errorDiv.textContent = `Erro FATAL: ${message}. Verifique o console para mais detalhes.`;
+            errorDiv.classList.remove('hidden');
+            statusDiv.classList.add('hidden');
+            console.error(message);
+        }
 
-        // ==============================================================================
-        // LÓGICA DE REPETIÇÃO ESPAÇADA
-        // ==============================================================================
-
-        // Defines the interval in days for the next review based on the current review number (0-indexed)
-        const REPETITION_SCHEDULE = [1, 2, 4, 7, 30]; // Intervalos em dias
-
-        // --- Utility Functions ---
+        /** Exibe mensagens de status/carregamento. */
+        function displayStatus(message, isHidden = false) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.textContent = message;
+            statusDiv.classList.toggle('hidden', isHidden);
+        }
         
-        /**
-         * Mostra uma mensagem de feedback temporária no formulário.
-         */
-        function showFormMessage(message, isError = false, elementId = 'form-message') {
-            const msgEl = document.getElementById(elementId);
-            msgEl.textContent = message;
-            msgEl.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800', 'bg-yellow-100', 'text-orange-800');
-            
-            if (isError) {
-                msgEl.classList.add('bg-red-100', 'text-red-800');
-            } else {
-                msgEl.classList.add('bg-green-100', 'text-green-800');
-            }
-
-            setTimeout(() => {
-                msgEl.classList.add('hidden');
-            }, 4000);
+        /** Converte um objeto Timestamp do Firebase para uma string de data formatada. */
+        function formatDate(timestamp) {
+            const date = timestamp.toDate();
+            // Formato dd/mm/aaaa
+            const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+            return date.toLocaleDateString('pt-BR', options);
         }
 
-        function calculateNextReviewDay(currentReviewIndex) {
-            if (currentReviewIndex >= REPETITION_SCHEDULE.length) {
-                return null; // Mastered
+        // --- LÓGICA DE REPETIÇÃO ESPAÇADA (SR) ---
+
+        /** Calcula a próxima data de revisão baseada no nível atual. */
+        function calculateNextReviewDate(currentLevel) {
+            const now = new Date();
+            let daysToAdd = 1;
+
+            switch (currentLevel) {
+                case 1: daysToAdd = 1; break;   // Errou/Não Lembrou
+                case 2: daysToAdd = 3; break;   // Dificuldade
+                case 3: daysToAdd = 7; break;   // Mediano
+                case 4: daysToAdd = 15; break;  // Fácil
+                case 5: daysToAdd = 30; break;  // Dominado (Mastered)
+                default: daysToAdd = 1;
             }
-            return REPETITION_SCHEDULE[currentReviewIndex];
+
+            now.setDate(now.getDate() + daysToAdd);
+            return now;
         }
 
-        function isReviewDue(lastReviewDate, nextReviewDay) {
-            if (nextReviewDay === null) return false;
-            if (!lastReviewDate) return true; // Should review if no previous review date
+        // --- FIREBASE E AUTENTICAÇÃO ---
 
-            const today = new Date();
-            const lastReview = new Date(lastReviewDate);
-            const dueTime = lastReview.getTime() + (nextReviewDay * 24 * 60 * 60 * 1000);
-            return dueTime <= today.getTime();
-        }
-
-        function formatNextReview(word) {
-            if (word.isMastered) {
-                return `<span class="review-status-mastered px-2 py-1 rounded-full text-xs">Dominado (${word.reviewCount}x)</span>`;
-            }
-
-            const nextReviewDay = word.nextReviewDay;
-            const lastReviewDate = word.lastReviewDate ? new Date(word.lastReviewDate) : null;
-
-            if (isReviewDue(lastReviewDate, nextReviewDay)) {
-                return `<span class="review-status-urgent px-2 py-1 rounded-full text-xs animate-pulse">REVISÃO HOJE!</span>`;
-            }
-
-            // Calculate days remaining (or if due in the future)
-            if (lastReviewDate) {
-                const dueDate = new Date(lastReviewDate.getTime() + (nextReviewDay * 24 * 60 * 60 * 1000));
-                const timeDiff = dueDate.getTime() - new Date().getTime();
-                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-                if (daysDiff > 0) {
-                     return `<span class="review-status-ok px-2 py-1 rounded-full text-xs">Próxima em ${daysDiff} dias</span>`;
-                } else {
-                     // Caso em que já passou o dia de revisão (negativo ou zero)
-                     return `<span class="review-status-urgent px-2 py-1 rounded-full text-xs">REVISÃO PENDENTE!</span>`;
-                }
-            }
-            // Caso de palavra recém-adicionada (sem lastReviewDate)
-            return `<span class="review-status-due px-2 py-1 rounded-full text-xs">Nova, Revisar Hoje</span>`;
-        }
-
-
-        // --- Firestore Operations ---
-
-        /**
-         * Initializes Firebase and authenticates the user.
-         */
-        async function initializeFirebase() {
+        /** Tenta a autenticação usando o token ou anonimamente. */
+        async function attemptAuthentication() {
             try {
-                // NOVO: Exibe o status inicial do token
-                const authStatusEl = document.getElementById('auth-status');
-                if (initialAuthToken) {
-                    authStatusEl.textContent = 'Status: Token Recebido (Autenticação Customizada)';
-                } else {
-                    authStatusEl.textContent = 'Status: Token Ausente (Tentando Login Anônimo)';
-                    authStatusEl.classList.add('text-red-500'); // Destaca se não houver token
-                }
-
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                setLogLevel('debug');
-
+                displayStatus("Autenticando...");
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await signInAnonymously(auth);
                 }
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        document.getElementById('user-info').textContent = userId;
-                        // Atualiza o status após o login
-                        authStatusEl.textContent = `Login: ${initialAuthToken ? 'Customizado' : 'Anônimo'} | UID: ${userId.substring(0, 10)}...`;
-                        authStatusEl.classList.remove('text-red-500');
-                        authStatusEl.classList.add('text-green-600');
-                        startListeningForWords();
-                        document.getElementById('loading').classList.add('hidden');
-                        console.log("Autenticação e Listener do Firebase iniciados com sucesso.");
-                    } else {
-                        document.getElementById('user-info').textContent = 'Erro de Autenticação.';
-                        authStatusEl.textContent = 'Erro: Falha no Login (Verifique Regras)';
-                        authStatusEl.classList.remove('text-green-600');
-                        authStatusEl.classList.add('text-red-600');
-                    }
-                });
-
             } catch (error) {
-                console.error("Erro FATAL na inicialização ou autenticação do Firebase:", error);
-                document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro FATAL ao carregar (verifique o console para detalhes).</p>';
+                displayError(`Falha na autenticação: ${error.message}`);
+                console.error("Erro ao autenticar:", error);
             }
         }
 
-        /**
-         * Adds a new word to the tracker.
-         */
-        async function addWord(word, context) {
-            if (!isAuthReady) {
-                showFormMessage("Erro de autenticação. Tente recarregar a página.", true);
-                return;
-            }
-
-            const normalizedWord = word.trim().toLowerCase();
-            
-            const isDuplicate = allWords.some(item => item.word.toLowerCase() === normalizedWord);
-            if (isDuplicate) {
-                showFormMessage(`A palavra "${word.trim()}" já está na sua lista!`, true);
-                return;
-            }
-
-            const newWord = {
-                word: word.trim(),
-                context: context.trim(),
-                reviewCount: 0,
-                nextReviewDay: REPETITION_SCHEDULE[0], // Start with 1 day interval
-                lastReviewDate: null,
-                isMastered: false,
-                seen: false,
-                heard: false,
-                said: false,
-                written: false,
-                createdAt: serverTimestamp(),
-                userId: userId
-            };
-
-            try {
-                const wordsCollection = collection(db, getWordCollectionPath());
-                await addDoc(wordsCollection, newWord);
-                showFormMessage("Palavra adicionada com sucesso!", false);
-            } catch (error) {
-                console.error("Erro ao adicionar palavra:", error);
-                showFormMessage("Erro ao salvar palavra. Tente novamente.", true);
-            }
+        /** Configura o listener de autenticação e carrega os dados. */
+        function setupAuthListener() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-id').textContent = userId;
+                    document.getElementById('add-word-btn').disabled = false;
+                    displayStatus("Autenticação concluída. Carregando dados...");
+                    setupDataListener();
+                } else {
+                    userId = null;
+                    document.getElementById('user-id').textContent = 'Usuário Desconectado (Erro de Auth)';
+                    document.getElementById('add-word-btn').disabled = true;
+                    displayStatus("Usuário não autenticado. Apenas o modo anônimo está disponível.", true);
+                    document.getElementById('loading-row').textContent = 'Faça login para salvar seu progresso.';
+                }
+            });
         }
 
-        /**
-         * Updates a word's spaced repetition status based on difficulty.
-         */
-        async function completeReview(wordId, currentReviewCount, difficulty) {
-            if (!isAuthReady) return;
-
-            let nextReviewCount;
-
-            if (difficulty === 'easy') {
-                // Se foi fácil, avança para o próximo estágio
-                nextReviewCount = currentReviewCount + 1;
-            } else { 
-                // Se foi difícil, NÃO avança (mantém o count atual), forçando a repetição do mesmo intervalo curto.
-                nextReviewCount = currentReviewCount; 
-            }
-
-            const nextReviewInterval = calculateNextReviewDay(nextReviewCount);
-            const isMastered = nextReviewInterval === null;
-
-            const updates = {
-                reviewCount: nextReviewCount,
-                lastReviewDate: new Date().toISOString(),
-                nextReviewDay: nextReviewInterval,
-                isMastered: isMastered
-            };
-
-            try {
-                const wordRef = doc(db, getWordCollectionPath(), wordId);
-                await updateDoc(wordRef, updates);
-                console.log(`Revisão de ${wordId} completada. Dificuldade: ${difficulty}. Próxima em ${nextReviewInterval} dias.`);
-            } catch (error) {
-                console.error("Erro ao completar revisão:", error);
-            }
-        }
-        
-        /**
-         * Updates the word and context of an existing word. (NOVO)
-         */
-        async function updateWord(wordId, newWord, newContext) {
-             if (!isAuthReady) {
-                showFormMessage("Erro de autenticação.", true, 'edit-form-message');
-                return;
-            }
-            
-            const updates = {
-                word: newWord.trim(),
-                context: newContext.trim()
-            };
-
-            try {
-                const wordRef = doc(db, getWordCollectionPath(), wordId);
-                await updateDoc(wordRef, updates);
-                showFormMessage("Palavra atualizada com sucesso!", false, 'edit-form-message');
-            } catch (error) {
-                console.error("Erro ao atualizar palavra:", error);
-                showFormMessage("Erro ao salvar alterações. Tente novamente.", true, 'edit-form-message');
-            }
-        }
-
-        /**
-         * Updates the multisensory encoding status.
-         */
-        async function updateEncoding(wordId, field, value) {
-            if (!isAuthReady) return;
-            const updates = { [field]: value };
-            try {
-                const wordRef = doc(db, getWordCollectionPath(), wordId);
-                await updateDoc(wordRef, updates);
-            } catch (error) {
-                console.error(`Erro ao atualizar encoding ${field}:`, error);
-            }
-        }
-
-        /**
-         * Shows the custom confirmation modal for deleting a word.
-         */
-        let wordToDeleteInfo = null;
-        function showDeleteConfirmation(wordId, wordText) {
-            wordToDeleteInfo = { id: wordId, text: wordText };
-            document.getElementById('word-to-delete').textContent = wordText;
-            document.getElementById('delete-confirm-modal').classList.remove('hidden');
-        }
-
-        /**
-         * Executes the deletion of the word.
-         */
-        async function executeDeleteWord() {
-            if (!isAuthReady || !wordToDeleteInfo) return;
-            
-            const wordId = wordToDeleteInfo.id;
-
-            try {
-                const wordRef = doc(db, getWordCollectionPath(), wordId);
-                await deleteDoc(wordRef);
-            } catch (error) {
-                console.error("Erro ao deletar palavra:", error);
-            } finally {
-                document.getElementById('delete-confirm-modal').classList.add('hidden');
-                wordToDeleteInfo = null;
-            }
-        }
-        
-        /**
-         * Abre o modal de edição e preenche com os dados da palavra (NOVO).
-         */
-        function openEditModal(word) {
-            document.getElementById('edit-word-id').value = word.id;
-            document.getElementById('edit-word-input').value = word.word;
-            document.getElementById('edit-context-input').value = word.context;
-            document.getElementById('edit-form-message').classList.add('hidden');
-            document.getElementById('edit-word-modal').classList.remove('hidden');
-        }
-
-
-        /**
-         * Listens for real-time updates to the word list and updates the local state.
-         */
-        function startListeningForWords() {
-            if (!isAuthReady || !userId) {
-                console.error("Listener do Firestore tentado antes de o ID do usuário estar definido.");
-                return;
-            }
-
-            const wordsCollection = collection(db, getWordCollectionPath());
-            const q = query(wordsCollection);
+        /** Configura o listener em tempo real para o vocabulário (onSnapshot). */
+        function setupDataListener() {
+            // Caminho da coleção privada do usuário: /artifacts/{appId}/users/{userId}/vocab
+            const vocabColRef = collection(db, `artifacts/${appId}/users/${userId}/vocab`);
+            const q = query(vocabColRef);
 
             onSnapshot(q, (snapshot) => {
-                allWords = []; // Atualiza o estado global
-                snapshot.forEach((doc) => {
-                    const data = doc.data();
-                    // Garante que os dados necessários para o JS estão presentes
-                    allWords.push({ 
-                        id: doc.id, 
-                        ...data,
-                        reviewCount: data.reviewCount || 0,
-                        nextReviewDay: data.nextReviewDay || REPETITION_SCHEDULE[0],
-                        isMastered: data.isMastered || false
-                    });
+                vocabData = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    reviewDate: doc.data().reviewDate.toDate(), // Converte Firestore Timestamp para Data JS
+                    level: doc.data().level || 1, // Garante que o nível exista
+                }));
+                
+                displayStatus("Dados de vocabulário atualizados.", true);
+                renderVocabList();
+            }, (error) => {
+                displayError(`Erro ao ouvir dados do Firestore: ${error.message}`);
+                document.getElementById('loading-row').textContent = 'Erro ao carregar dados.';
+            });
+        }
+
+        // --- FUNÇÕES CRUD E INTERAÇÃO ---
+
+        /** Adiciona uma nova palavra ao Firestore. */
+        async function addWord() {
+            const word = document.getElementById('new-word').value.trim();
+            const context = document.getElementById('new-context').value.trim();
+
+            if (!word || !context) {
+                displayStatus("Por favor, preencha a palavra/frase e o contexto.", false);
+                return;
+            }
+            
+            // Define a primeira revisão para amanhã (nível 1)
+            const nextReview = calculateNextReviewDate(1);
+            
+            try {
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/vocab`), {
+                    word,
+                    context,
+                    reviewDate: nextReview,
+                    level: 1,
+                    createdAt: new Date(),
                 });
                 
-                // Renderiza a lista aplicando o filtro atual
-                applyFilterAndRender(); 
-                
-            }, (error) => {
-                console.error("Erro ao ouvir updates do Firestore:", error);
-                // ESTE É O ERRO CRÍTICO A SER MONITORADO
-                if (error.code === 'permission-denied') {
-                    console.error("🚨 ERRO CRÍTICO: PERMISSÃO NEGADA (RULES). As regras do Firestore não permitem este acesso.");
-                    document.getElementById('loading').innerHTML = '<p class="text-red-600 font-bold">ERRO: Permissão Negada. Por favor, verifique as Regras de Segurança do Firestore e recarregue.</p>';
-                } else {
-                    document.getElementById('loading').innerHTML = `<p class="text-red-600">Erro de Conexão: ${error.code}</p>`;
-                }
+                document.getElementById('new-word').value = '';
+                document.getElementById('new-context').value = '';
+                displayStatus(`"${word}" adicionada com sucesso!`, true);
+            } catch (error) {
+                displayError(`Erro ao adicionar palavra: ${error.message}`);
+            }
+        }
+
+        /** Atualiza o nível de retenção de uma palavra após o desafio. */
+        async function updateWordRetention(vocabId, newLevel) {
+            const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
+            const nextReviewDate = calculateNextReviewDate(newLevel);
+            
+            try {
+                await updateDoc(docRef, {
+                    level: newLevel,
+                    reviewDate: nextReviewDate,
+                });
+                displayStatus(`Progresso atualizado. Próxima revisão: ${formatDate(new Date(nextReviewDate))}.`, true);
+            } catch (error) {
+                displayError(`Erro ao atualizar retenção: ${error.message}`);
+            }
+        }
+
+        /** Remove uma palavra do Firestore. */
+        async function deleteWord(vocabId) {
+            if (!confirm("Tem certeza que deseja remover esta palavra?")) return;
+            
+            const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
+            try {
+                await deleteDoc(docRef);
+                displayStatus("Palavra removida.", true);
+            } catch (error) {
+                displayError(`Erro ao deletar palavra: ${error.message}`);
+            }
+        }
+
+        // --- RENDERIZAÇÃO DA INTERFACE ---
+
+        /** Renderiza a lista de vocabulário na tabela. */
+        function renderVocabList() {
+            const container = document.getElementById('vocab-list');
+            container.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Filtrar e ordenar dados (ordenar localmente para evitar problemas de índice no Firestore)
+            let filteredData = vocabData;
+            
+            if (currentFilter === 'today') {
+                filteredData = vocabData.filter(item => item.reviewDate <= today);
+            } else if (currentFilter === 'mastered') {
+                // Considera dominado como nível 5 ou mais
+                filteredData = vocabData.filter(item => item.level >= 5);
+            }
+
+            // Ordenar por data de revisão (mais urgente primeiro)
+            filteredData.sort((a, b) => a.reviewDate.getTime() - b.reviewDate.getTime());
+            
+            document.getElementById('total-words-count').textContent = `Total: ${vocabData.length} palavras. Mostrando: ${filteredData.length}.`;
+
+            if (filteredData.length === 0) {
+                container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Nenhuma palavra encontrada neste filtro.</td></tr>`;
+                return;
+            }
+
+            filteredData.forEach(item => {
+                const isUrgent = item.reviewDate <= today;
+                const rowClass = isUrgent ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50';
+                const reviewText = isUrgent ? `<span class="font-bold text-red-600">REVISAR HOJE</span>` : formatDate(item.reviewDate);
+
+                const row = `
+                    <tr class="border-b ${rowClass}">
+                        <td class="p-3 font-semibold text-gray-800">${item.word}</td>
+                        <td class="p-3 text-sm">${reviewText}</td>
+                        <td class="p-3 text-sm hidden sm:table-cell">Nível ${item.level}</td>
+                        <td class="p-3">
+                            <button data-id="${item.id}" class="recall-trigger text-sm text-blue-600 hover:text-blue-800 font-medium">
+                                Desafiar Memória
+                            </button>
+                        </td>
+                        <td class="p-3">
+                            <button data-id="${item.id}" class="delete-trigger text-red-500 hover:text-red-700 transition">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd"></path></svg>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                container.insertAdjacentHTML('beforeend', row);
+            });
+
+            // Re-adicionar listeners aos botões
+            document.querySelectorAll('.recall-trigger').forEach(btn => {
+                btn.addEventListener('click', (e) => openRecallModal(e.currentTarget.dataset.id));
+            });
+            document.querySelectorAll('.delete-trigger').forEach(btn => {
+                btn.addEventListener('click', (e) => deleteWord(e.currentTarget.dataset.id));
             });
         }
         
-        /**
-         * Aplica o filtro atual e gerencia os estilos dos botões.
-         */
-        function applyFilterAndRender(filter = currentFilter) {
-            currentFilter = filter;
+        // --- LÓGICA DO MODAL DE RECALL ---
+        
+        let activeVocabId = null;
+
+        function openRecallModal(vocabId) {
+            const item = vocabData.find(v => v.id === vocabId);
+            if (!item) return;
+
+            activeVocabId = vocabId;
             
-            // 1. Atualiza o estilo e o texto dos botões
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                const filterType = btn.dataset.filter;
-                btn.classList.remove('bg-gray-700', 'bg-blue-600', 'hover:bg-blue-700', 'bg-yellow-500', 'hover:bg-yellow-600', 'bg-green-500', 'hover:bg-green-600');
-                btn.classList.add('text-white');
-                
-                if (filterType === 'all') {
-                    btn.textContent = 'Todas';
-                    if (filter === 'all') {
-                        btn.classList.add('bg-gray-700'); 
-                    } else {
-                        btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                    }
-                } else if (filterType === 'due') {
-                    const dueCount = allWords.filter(word => isReviewDue(word.lastReviewDate, word.nextReviewDay)).length;
-                    btn.textContent = `Revisar Hoje (${dueCount})`;
-                    if (filter === 'due') {
-                        btn.classList.add('bg-gray-700');
-                    } else {
-                        btn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-                    }
-                } else if (filterType === 'mastered') {
-                    btn.textContent = 'Dominadas';
-                    if (filter === 'mastered') {
-                        btn.classList.add('bg-gray-700');
-                    } else {
-                        btn.classList.add('bg-green-500', 'hover:bg-green-600');
-                    }
-                }
-            });
-            
-            // 2. Renderiza a lista filtrada
-            renderWordList(allWords);
+            document.getElementById('modal-word').textContent = item.word;
+            document.getElementById('modal-context').textContent = item.context;
+
+            document.getElementById('answer-area').classList.add('hidden');
+            document.getElementById('show-answer-btn').classList.remove('hidden');
+
+            document.getElementById('recall-modal').classList.remove('hidden');
+            document.getElementById('recall-modal').classList.add('flex');
         }
 
-        /**
-         * Renders the list of words in the table.
-         */
-        function renderWordList(words) {
-            const wordListBody = document.getElementById('word-list');
-            wordListBody.innerHTML = ''; 
+        function closeRecallModal() {
+            document.getElementById('recall-modal').classList.add('hidden');
+            document.getElementById('recall-modal').classList.remove('flex');
+            activeVocabId = null;
+        }
 
-            const filteredWords = words.filter(word => {
-                if (currentFilter === 'all') return true;
-                if (currentFilter === 'mastered') return word.isMastered;
-                if (currentFilter === 'due') {
-                    return isReviewDue(word.lastReviewDate, word.nextReviewDay);
+
+        // --- INICIALIZAÇÃO E LISTENERS GERAIS ---
+
+        /** Inicializa a aplicação e o Firebase. */
+        async function initializeAppAndFirebase() {
+            try {
+                if (!firebaseConfig) {
+                    displayError("As configurações do Firebase (firebaseConfig) não foram fornecidas. O aplicativo não pode salvar dados.");
+                    document.getElementById('user-id').textContent = 'SALVAMENTO DESATIVADO';
+                    return;
                 }
-                return true;
-            });
 
-            const sortedWords = filteredWords.sort((a, b) => {
-                const aDue = isReviewDue(a.lastReviewDate, a.nextReviewDay);
-                const bDue = isReviewDue(b.lastReviewDate, b.nextReviewDay);
+                // 1. Inicializa Firebase
+                setLogLevel('Debug');
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
 
-                if (a.isMastered !== b.isMastered) return a.isMastered ? 1 : -1;
-                if (aDue !== bDue) return aDue ? -1 : 1;
-                if (a.nextReviewDay !== b.nextReviewDay) return a.nextReviewDay - b.nextReviewDay;
-                return 0;
-            });
+                // 2. Configura listener de autenticação (isso dispara o carregamento de dados)
+                setupAuthListener();
 
-            if (sortedWords.length === 0) {
-                document.getElementById('empty-state').classList.remove('hidden');
-                return;
+                // 3. Tenta autenticar
+                await attemptAuthentication();
+
+            } catch (error) {
+                displayError(`Erro FATAL durante a inicialização: ${error.message}`);
+                console.error("Erro na Inicialização:", error);
             }
-            document.getElementById('empty-state').classList.add('hidden');
-
-            sortedWords.forEach(word => {
-                const row = wordListBody.insertRow();
-                row.className = 'hover:bg-gray-50';
-
-                // 1. Word Column
-                row.insertCell().innerHTML = `<span class="font-bold text-gray-900">${word.word}</span>`;
-
-                // 2. Next Review Column (Spaced Repetition Status)
-                row.insertCell().innerHTML = formatNextReview(word);
-
-                // 3. Multisensory Encoding
-                const encodingCell = row.insertCell();
-                encodingCell.className = 'px-2 py-4 whitespace-nowrap text-sm text-gray-500';
-                encodingCell.innerHTML = `
-                    <div class="flex flex-wrap gap-2 text-xs">
-                        <label class="inline-flex items-center">
-                            <input type="checkbox" data-field="seen" ${word.seen ? 'checked' : ''} class="encoding-checkbox form-checkbox h-4 w-4 text-blue-600 rounded" data-id="${word.id}">
-                            <span class="ml-1">Vi</span>
-                        </label>
-                        <label class="inline-flex items-center">
-                            <input type="checkbox" data-field="heard" ${word.heard ? 'checked' : ''} class="encoding-checkbox form-checkbox h-4 w-4 text-blue-600 rounded" data-id="${word.id}">
-                            <span class="ml-1">Ouvi</span>
-                        </label>
-                        <label class="inline-flex items-center">
-                            <input type="checkbox" data-field="said" ${word.said ? 'checked' : ''} class="encoding-checkbox form-checkbox h-4 w-4 text-blue-600 rounded" data-id="${word.id}">
-                            <span class="ml-1">Falei</span>
-                        </label>
-                        <label class="inline-flex items-center">
-                            <input type="checkbox" data-field="written" ${word.written ? 'checked' : ''} class="encoding-checkbox form-checkbox h-4 w-4 text-blue-600 rounded" data-id="${word.id}">
-                            <span class="ml-1">Escrevi</span>
-                        </label>
-                    </div>
-                `;
-
-                // 4. Retrieval Practice (Challenge Button)
-                const challengeCell = row.insertCell();
-                challengeCell.className = 'px-2 py-4 whitespace-nowrap text-sm';
-                challengeCell.innerHTML = `
-                    <button data-word-id="${word.id}" 
-                            data-review-count="${word.reviewCount}"
-                            data-word="${word.word}" 
-                            data-context="${word.context}"
-                        class="recall-btn px-3 py-1 bg-teal-500 text-white text-xs font-semibold rounded-full hover:bg-teal-600 transition duration-150">
-                        Desafiar Memória
-                    </button>
-                `;
-
-                // 5. Actions (Edit, Delete)
-                const actionsCell = row.insertCell();
-                actionsCell.className = 'px-2 py-4 whitespace-nowrap text-sm font-medium';
-                actionsCell.innerHTML = `
-                    <button data-word-id="${word.id}" 
-                            data-word-text="${word.word}" 
-                            data-context-text="${word.context}"
-                            class="edit-btn text-orange-600 hover:text-orange-900 font-semibold mr-2 transition duration-150">
-                            Editar
-                    </button>
-                    <button onclick="window.showDeleteConfirmation('${word.id}', '${word.word}')"
-                        class="text-red-600 hover:text-red-900 transition duration-150">
-                        Deletar
-                    </button>
-                `;
-            });
-
-            attachEventListeners();
         }
 
-        // --- Event Listeners and UI Logic ---
-
-        function attachEventListeners() {
-            // Form submission for adding new words
-            document.getElementById('add-word-form').onsubmit = (e) => {
-                e.preventDefault();
-                const word = document.getElementById('word-input').value;
-                const context = document.getElementById('context-input').value;
-
-                if (word && context) {
-                    addWord(word, context);
-                    document.getElementById('add-word-form').reset();
-                } else {
-                    showFormMessage('Erro: Por favor, preencha a palavra E o contexto.', true);
-                }
-            };
-
-            // Encoding Checkbox handling
-            document.querySelectorAll('.encoding-checkbox').forEach(checkbox => {
-                checkbox.onchange = (e) => {
-                    const id = e.target.dataset.id;
-                    const field = e.target.dataset.field;
-                    const checked = e.target.checked;
-                    updateEncoding(id, field, checked);
-                };
+        // Adicionar Listeners de UI
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeAppAndFirebase();
+            
+            document.getElementById('add-word-btn').addEventListener('click', addWord);
+            
+            document.getElementById('filter-view').addEventListener('change', (e) => {
+                currentFilter = e.target.value;
+                renderVocabList();
             });
 
-            // Filter Controls handling
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.onclick = (e) => applyFilterAndRender(e.target.dataset.filter);
+            // Listeners do Modal
+            document.getElementById('close-modal-btn').addEventListener('click', closeRecallModal);
+            document.getElementById('show-answer-btn').addEventListener('click', () => {
+                document.getElementById('answer-area').classList.remove('hidden');
+                document.getElementById('show-answer-btn').classList.add('hidden');
             });
-            
-            // EDIT Modal Event Listener (NOVO)
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    // Busca a palavra inteira no estado global 'allWords'
-                    const word = allWords.find(w => w.id === e.target.dataset.wordId);
-                    if (word) {
-                        openEditModal(word);
-                    }
-                };
-            });
-            
-            document.getElementById('cancel-edit-btn').onclick = () => {
-                document.getElementById('edit-word-modal').classList.add('hidden');
-            };
-            
-            document.getElementById('edit-word-form').onsubmit = (e) => {
-                e.preventDefault();
-                const id = document.getElementById('edit-word-id').value;
-                const newWord = document.getElementById('edit-word-input').value;
-                const newContext = document.getElementById('edit-context-input').value;
-                
-                updateWord(id, newWord, newContext);
-                // Fecha o modal após um pequeno delay para a mensagem de sucesso
-                setTimeout(() => {
-                    document.getElementById('edit-word-modal').classList.add('hidden');
-                }, 1000);
-            };
 
-            // Delete Confirmation Modal Listeners
-            document.getElementById('confirm-delete-btn').onclick = executeDeleteWord;
-            document.getElementById('cancel-delete-btn').onclick = () => {
-                document.getElementById('delete-confirm-modal').classList.add('hidden');
-                wordToDeleteInfo = null;
-            };
-
-
-            // Retrieval Practice Modal handling
-            const modal = document.getElementById('context-modal');
-            const modalWordEl = document.getElementById('modal-word');
-            const modalContextEl = document.getElementById('modal-context');
-            const hiddenContextEl = document.getElementById('modal-hidden-context');
-            const revealAnswerBtn = document.getElementById('reveal-answer-btn'); 
-            const userAnswerInput = document.getElementById('user-answer-input'); 
-            const difficultyButtons = document.getElementById('difficulty-buttons');
-            const closeModalBtn = document.getElementById('close-modal-btn');
-            
-            
             document.querySelectorAll('.recall-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    const wordId = e.target.dataset.wordId;
-                    const wordText = e.target.dataset.word;
-                    const contextText = e.target.dataset.context;
-                    const reviewCount = parseInt(e.target.dataset.reviewCount);
-
-                    // 1. Armazena o estado da palavra atual
-                    currentReviewWord = { id: wordId, reviewCount: reviewCount };
-                    
-                    // 2. Preenche e Reseta o Modal
-                    modalWordEl.textContent = wordText;
-                    modalContextEl.textContent = contextText;
-                    userAnswerInput.value = ''; 
-                    hiddenContextEl.classList.add('hidden'); 
-                    revealAnswerBtn.classList.remove('hidden'); // Mostra o botão de revelar
-                    difficultyButtons.classList.add('hidden'); // Esconde os botões de dificuldade
-                    
-                    modal.classList.remove('hidden');
-
-                    // 3. Ação: Revelar Resposta
-                    revealAnswerBtn.onclick = () => {
-                        hiddenContextEl.classList.remove('hidden');
-                        revealAnswerBtn.classList.add('hidden'); // Esconde o botão de revelar
-                        difficultyButtons.classList.remove('hidden'); // Mostra os botões de dificuldade
-                    };
-                };
+                btn.addEventListener('click', (e) => {
+                    const level = parseInt(e.target.dataset.level, 10);
+                    // Mapeia os níveis de 1, 3, 5 para 1, 2, 3 na SR.
+                    // 1: Não Lembrei -> Nível 1 (1 dia)
+                    // 3: Dificuldade -> Nível 3 (7 dias)
+                    // 5: Fácil/Dominado -> Nível 5 (30 dias)
+                    updateWordRetention(activeVocabId, level);
+                    closeRecallModal();
+                });
             });
-
-            // Ação: Botões de Dificuldade
-            document.querySelectorAll('.review-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    if (!currentReviewWord) return;
-                    
-                    const difficulty = e.target.dataset.difficulty; // 'easy' or 'hard'
-                    const { id, reviewCount } = currentReviewWord;
-
-                    // Chama a função de revisão com a dificuldade
-                    completeReview(id, reviewCount, difficulty);
-                    
-                    // Limpa o estado e fecha o modal
-                    currentReviewWord = null;
-                    modal.classList.add('hidden');
-                };
-            });
-
-            // Ação: Fechar Modal
-            closeModalBtn.onclick = () => {
-                // Se o modal for fechado sem clicar em "Lembrei/Não Lembrei", 
-                // a revisão não é marcada como completa.
-                currentReviewWord = null;
-                modal.classList.add('hidden');
-            };
-        }
-
-        // Expose functions to window scope for onclick attributes in dynamic HTML
-        window.showDeleteConfirmation = showDeleteConfirmation;
-
-        // Start the application
-        document.getElementById('loading').classList.remove('hidden');
-        initializeFirebase();
+        });
 
     </script>
 </body>
