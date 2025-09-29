@@ -172,6 +172,7 @@
         let userId = null;
         let vocabData = [];
         let currentFilter = 'all';
+        let isFirebaseEnabled = false; // Novo estado para controlar o modo de salvamento
 
         // --- UTILS E UI HANDLERS ---
 
@@ -179,22 +180,34 @@
         function displayError(message) {
             const errorDiv = document.getElementById('error-message');
             const statusDiv = document.getElementById('status-message');
+            // Limpa a mensagem de status
+            statusDiv.classList.add('hidden');
+            
             errorDiv.textContent = `Erro FATAL: ${message}. Verifique o console para mais detalhes.`;
             errorDiv.classList.remove('hidden');
-            statusDiv.classList.add('hidden');
             console.error(message);
         }
 
         /** Exibe mensagens de status/carregamento. */
         function displayStatus(message, isHidden = false) {
             const statusDiv = document.getElementById('status-message');
+            const errorDiv = document.getElementById('error-message');
+            
+            // Garante que a mensagem de erro esteja oculta ao mostrar o status
+            errorDiv.classList.add('hidden');
+            
+            // Redefine os estilos de status para o padrão (Amarelo/Azul - não modo local)
+            statusDiv.classList.remove('bg-red-50', 'text-red-600', 'border-red-400');
+            statusDiv.classList.add('bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
+
             statusDiv.textContent = message;
             statusDiv.classList.toggle('hidden', isHidden);
         }
         
         /** Converte um objeto Timestamp do Firebase para uma string de data formatada. */
         function formatDate(timestamp) {
-            const date = timestamp.toDate();
+            // A função é capaz de lidar tanto com objetos Date (local) quanto com Timestamps
+            const date = timestamp instanceof Date ? timestamp : timestamp.toDate();
             // Formato dd/mm/aaaa
             const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
             return date.toLocaleDateString('pt-BR', options);
@@ -208,16 +221,85 @@
             let daysToAdd = 1;
 
             switch (currentLevel) {
-                case 1: daysToAdd = 1; break;   // Errou/Não Lembrou
-                case 2: daysToAdd = 3; break;   // Dificuldade
-                case 3: daysToAdd = 7; break;   // Mediano
-                case 4: daysToAdd = 15; break;  // Fácil
-                case 5: daysToAdd = 30; break;  // Dominado (Mastered)
-                default: daysToAdd = 1;
+                case 1: daysToAdd = 1; break;   // Não Lembrei (0-1 dia)
+                case 3: daysToAdd = 7; break;   // Com Dificuldade (3-7 dias no botão, mas usaremos 7)
+                case 5: daysToAdd = 30; break;  // Fácil/Dominado (15+ dias no botão, mas usaremos 30)
+                default: daysToAdd = 1; // Nível 2 e 4 farão fallback para 1 dia, mas não são usados nos botões
             }
 
             now.setDate(now.getDate() + daysToAdd);
             return now;
+        }
+
+        // --- LOCAL STORAGE FALLBACK LOGIC ---
+        
+        const LOCAL_STORAGE_KEY = 'master_retention_vocab';
+
+        function saveLocalVocab() {
+            // Prepara os dados para salvar (converte objetos Date para string ISO para armazenamento)
+            const serializableData = vocabData.map(item => ({
+                ...item,
+                reviewDate: item.reviewDate.toISOString(),
+            }));
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(serializableData));
+            displayStatus("Dados salvos localmente.", true);
+        }
+
+        function loadLocalVocab() {
+            try {
+                const data = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (data) {
+                    vocabData = JSON.parse(data).map(item => ({
+                        ...item,
+                        reviewDate: new Date(item.reviewDate), // Converte a string ISO de volta para Date
+                        level: item.level || 1, 
+                    }));
+                } else {
+                    vocabData = [];
+                }
+            } catch (e) {
+                console.error("Erro ao carregar dados do Local Storage:", e);
+                vocabData = [];
+            }
+        }
+
+        function setupLocalDataMode() {
+            loadLocalVocab();
+            renderVocabList();
+        }
+
+        function addWordLocal(word, context) {
+            const nextReview = calculateNextReviewDate(1);
+            const newItem = {
+                id: crypto.randomUUID(),
+                word,
+                context,
+                reviewDate: nextReview,
+                level: 1,
+                createdAt: new Date(),
+            };
+            vocabData.push(newItem);
+            saveLocalVocab();
+            renderVocabList();
+        }
+
+        function updateWordRetentionLocal(vocabId, newLevel) {
+            const index = vocabData.findIndex(item => item.id === vocabId);
+            if (index > -1) {
+                vocabData[index].level = newLevel;
+                vocabData[index].reviewDate = calculateNextReviewDate(newLevel);
+                saveLocalVocab();
+                renderVocabList();
+            }
+        }
+
+        function deleteWordLocal(vocabId) {
+            const initialLength = vocabData.length;
+            vocabData = vocabData.filter(item => item.id !== vocabId);
+            if (vocabData.length < initialLength) {
+                saveLocalVocab();
+                renderVocabList();
+            }
         }
 
         // --- FIREBASE E AUTENTICAÇÃO ---
@@ -232,6 +314,7 @@
                     await signInAnonymously(auth);
                 }
             } catch (error) {
+                // Erro de autenticação é fatal no modo Firebase, mas a inicialização já tratou a falta de config
                 displayError(`Falha na autenticação: ${error.message}`);
                 console.error("Erro ao autenticar:", error);
             }
@@ -251,7 +334,11 @@
                     document.getElementById('user-id').textContent = 'Usuário Desconectado (Erro de Auth)';
                     document.getElementById('add-word-btn').disabled = true;
                     displayStatus("Usuário não autenticado. Apenas o modo anônimo está disponível.", true);
-                    document.getElementById('loading-row').textContent = 'Faça login para salvar seu progresso.';
+                    
+                    // CORREÇÃO: A linha de loading-row é removida quando renderVocabList é executada.
+                    // Para evitar o erro "Cannot set properties of null", modificamos o container (tbody) diretamente.
+                    const container = document.getElementById('vocab-list');
+                    container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Faça login para salvar seu progresso.</td></tr>`;
                 }
             });
         }
@@ -280,7 +367,7 @@
 
         // --- FUNÇÕES CRUD E INTERAÇÃO ---
 
-        /** Adiciona uma nova palavra ao Firestore. */
+        /** Adiciona uma nova palavra (usa Firestore ou Local Storage). */
         async function addWord() {
             const word = document.getElementById('new-word').value.trim();
             const context = document.getElementById('new-context').value.trim();
@@ -290,52 +377,74 @@
                 return;
             }
             
-            // Define a primeira revisão para amanhã (nível 1)
-            const nextReview = calculateNextReviewDate(1);
-            
-            try {
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/vocab`), {
-                    word,
-                    context,
-                    reviewDate: nextReview,
-                    level: 1,
-                    createdAt: new Date(),
-                });
+            document.getElementById('new-word').value = '';
+            document.getElementById('new-context').value = '';
+
+            if (isFirebaseEnabled) {
+                // Lógica FIREBASE
+                const nextReview = calculateNextReviewDate(1);
                 
-                document.getElementById('new-word').value = '';
-                document.getElementById('new-context').value = '';
-                displayStatus(`"${word}" adicionada com sucesso!`, true);
-            } catch (error) {
-                displayError(`Erro ao adicionar palavra: ${error.message}`);
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/vocab`), {
+                        word,
+                        context,
+                        reviewDate: nextReview,
+                        level: 1,
+                        createdAt: new Date(),
+                    });
+                    
+                    displayStatus(`"${word}" adicionada com sucesso!`, true);
+                } catch (error) {
+                    displayError(`Erro ao adicionar palavra (Firebase): ${error.message}`);
+                }
+            } else {
+                // Lógica LOCAL STORAGE
+                addWordLocal(word, context);
+                displayStatus(`"${word}" adicionada com sucesso (local).`, true);
             }
         }
 
-        /** Atualiza o nível de retenção de uma palavra após o desafio. */
+        /** Atualiza o nível de retenção de uma palavra após o desafio (usa Firestore ou Local Storage). */
         async function updateWordRetention(vocabId, newLevel) {
-            const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
-            const nextReviewDate = calculateNextReviewDate(newLevel);
-            
-            try {
-                await updateDoc(docRef, {
-                    level: newLevel,
-                    reviewDate: nextReviewDate,
-                });
-                displayStatus(`Progresso atualizado. Próxima revisão: ${formatDate(new Date(nextReviewDate))}.`, true);
-            } catch (error) {
-                displayError(`Erro ao atualizar retenção: ${error.message}`);
+            if (isFirebaseEnabled) {
+                // Lógica FIREBASE
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
+                const nextReviewDate = calculateNextReviewDate(newLevel);
+                
+                try {
+                    await updateDoc(docRef, {
+                        level: newLevel,
+                        reviewDate: nextReviewDate,
+                    });
+                    displayStatus(`Progresso atualizado. Próxima revisão: ${formatDate(new Date(nextReviewDate))}.`, true);
+                } catch (error) {
+                    displayError(`Erro ao atualizar retenção (Firebase): ${error.message}`);
+                }
+            } else {
+                // Lógica LOCAL STORAGE
+                updateWordRetentionLocal(vocabId, newLevel);
+                const nextReviewDate = calculateNextReviewDate(newLevel);
+                displayStatus(`Progresso atualizado (local). Próxima revisão: ${formatDate(nextReviewDate)}.`, true);
             }
         }
 
-        /** Remove uma palavra do Firestore. */
+        /** Remove uma palavra do Firestore (usa Firestore ou Local Storage). */
         async function deleteWord(vocabId) {
             if (!confirm("Tem certeza que deseja remover esta palavra?")) return;
             
-            const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
-            try {
-                await deleteDoc(docRef);
-                displayStatus("Palavra removida.", true);
-            } catch (error) {
-                displayError(`Erro ao deletar palavra: ${error.message}`);
+            if (isFirebaseEnabled) {
+                // Lógica FIREBASE
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/vocab`, vocabId);
+                try {
+                    await deleteDoc(docRef);
+                    displayStatus("Palavra removida.", true);
+                } catch (error) {
+                    displayError(`Erro ao deletar palavra (Firebase): ${error.message}`);
+                }
+            } else {
+                // Lógica LOCAL STORAGE
+                deleteWordLocal(vocabId);
+                displayStatus("Palavra removida (local).", true);
             }
         }
 
@@ -366,6 +475,9 @@
 
             if (filteredData.length === 0) {
                 container.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Nenhuma palavra encontrada neste filtro.</td></tr>`;
+                // REMOVIDO: document.getElementById('loading-row').textContent = ''; 
+                // A linha de loading-row é removida quando container.innerHTML é limpo/substituído. 
+                // A tentativa de acessá-la aqui causava o erro "Cannot set properties of null".
                 return;
             }
 
@@ -432,15 +544,29 @@
 
         // --- INICIALIZAÇÃO E LISTENERS GERAIS ---
 
-        /** Inicializa a aplicação e o Firebase. */
+        /** Inicializa a aplicação e o Firebase (ou modo Local Storage). */
         async function initializeAppAndFirebase() {
             try {
                 if (!firebaseConfig) {
-                    displayError("As configurações do Firebase (firebaseConfig) não foram fornecidas. O aplicativo não pode salvar dados.");
-                    document.getElementById('user-id').textContent = 'SALVAMENTO DESATIVADO';
+                    // FALLBACK PARA LOCAL STORAGE
+                    isFirebaseEnabled = false;
+                    document.getElementById('user-id').textContent = 'SALVAMENTO LOCAL (Não persistente)';
+                    
+                    // Exibe aviso não-fatal na área de status com estilo de alerta.
+                    const statusDiv = document.getElementById('status-message');
+                    statusDiv.classList.remove('hidden', 'bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
+                    statusDiv.classList.add('bg-red-50', 'text-red-600', 'border-red-400');
+                    statusDiv.textContent = "MODO LOCAL ATIVADO: Não foi possível configurar o Firestore. O progresso será SALVO LOCALMENTE e pode ser perdido se você limpar o cache ou usar outro dispositivo.";
+
+                    document.getElementById('error-message').classList.add('hidden');
+                    document.getElementById('add-word-btn').disabled = false;
+
+                    setupLocalDataMode();
                     return;
                 }
 
+                // MODO FIREBASE
+                isFirebaseEnabled = true;
                 // 1. Inicializa Firebase
                 setLogLevel('Debug');
                 app = initializeApp(firebaseConfig);
@@ -454,7 +580,7 @@
                 await attemptAuthentication();
 
             } catch (error) {
-                displayError(`Erro FATAL durante a inicialização: ${error.message}`);
+                displayError(`Erro FATAL durante a inicialização (Autenticação/Configurações): ${error.message}`);
                 console.error("Erro na Inicialização:", error);
             }
         }
@@ -480,10 +606,7 @@
             document.querySelectorAll('.recall-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const level = parseInt(e.target.dataset.level, 10);
-                    // Mapeia os níveis de 1, 3, 5 para 1, 2, 3 na SR.
-                    // 1: Não Lembrei -> Nível 1 (1 dia)
-                    // 3: Dificuldade -> Nível 3 (7 dias)
-                    // 5: Fácil/Dominado -> Nível 5 (30 dias)
+                    // Os níveis de 1, 3, 5 são usados diretamente na função calculateNextReviewDate
                     updateWordRetention(activeVocabId, level);
                     closeRecallModal();
                 });
