@@ -18,6 +18,7 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             padding: 1.5rem;
         }
+        /* Status Badges */
         .review-status-urgent { background-color: #fee2e2; color: #b91c1c; font-weight: 600; }
         .review-status-due { background-color: #fef3c7; color: #d97706; font-weight: 600; }
         .review-status-mastered { background-color: #d1fae5; color: #059669; font-weight: 600; }
@@ -64,6 +65,19 @@
         <div id="tracker-section" class="card overflow-x-auto">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">2. Monitoramento de Retenção (Spaced Repetition)</h2>
             <p class="text-sm text-gray-500 mb-4">Seu vocabulário, classificado por urgência de revisão.</p>
+            
+            <!-- NOVO: Filter Controls -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-3 sm:space-y-0">
+                <p class="text-md font-medium text-gray-700">Filtro de Visualização:</p>
+                <div id="filter-controls" class="flex flex-wrap gap-2">
+                    <!-- 'all' button is active by default (bg-gray-700) -->
+                    <button data-filter="all" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-gray-700 text-white shadow-md transition duration-150">Todas</button>
+                    <button data-filter="due" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-yellow-500 text-white shadow-md hover:bg-yellow-600 transition duration-150">Revisar Hoje</button>
+                    <button data-filter="mastered" class="filter-btn px-4 py-1 text-sm rounded-lg font-semibold bg-green-500 text-white shadow-md hover:bg-green-600 transition duration-150">Dominadas</button>
+                </div>
+            </div>
+            <!-- Fim do NOVO Filter Controls -->
+            
             <table class="min-w-full divide-y divide-gray-200">
                 <thead>
                     <tr>
@@ -105,23 +119,39 @@
                 </button>
             </div>
         </div>
+        
+        <!-- DELETE CONFIRMATION MODAL -->
+        <div id="delete-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+            <div class="bg-white card max-w-sm w-full">
+                <h3 class="text-xl font-bold mb-4 text-red-600">Confirmação de Exclusão</h3>
+                <p class="text-gray-700 mb-6">Tem certeza que deseja deletar permanentemente a palavra <span id="word-to-delete" class="font-bold"></span>?</p>
+                <div class="flex justify-end space-x-3">
+                    <button id="cancel-delete-btn" class="px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition duration-150">
+                        Cancelar
+                    </button>
+                    <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-150">
+                        Deletar
+                    </button>
+                </div>
+            </div>
+        </div>
+        
     </div>
 
     <!-- Firebase Imports and Script -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // CORRIGIDO: Incluir signInWithCustomToken nas importações
+        import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // ==============================================================================
-        // CONFIGURAÇÕES DO FIREBASE (CORRIGIDO PARA O AMBIENTE CANVAS)
+        // CONFIGURAÇÕES DO FIREBASE
         // ==============================================================================
 
-        // 1. Configuração do Firebase (usando a configuração do ambiente Canvas para execução)
+        // 1. Configuração do Firebase
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         
-        // CORREÇÃO: Reintroduzir o ID da Aplicação do Canvas e o Token de Autenticação
+        // Variáveis do Ambiente Canvas
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
@@ -131,11 +161,15 @@
         let userId = null;
         let isAuthReady = false;
 
+        // ESTADO GLOBAL DO APLICATIVO (NOVO)
+        let allWords = []; // Armazena a lista completa de palavras do Firestore
+        let currentFilter = 'all'; // 'all', 'due', 'mastered'
+
         // 2. Caminho da Coleção: Usando o CAMINHO COMPLETO E OBRIGATÓRIO do Canvas
         const getWordCollectionPath = () => `artifacts/${appId}/users/${userId}/mastery_tracker`;
 
         // ==============================================================================
-        // FIM DAS ALTERAÇÕES
+        // FIM DAS ALTERAÇÕES DE SETUP
         // ==============================================================================
 
         // --- Spaced Repetition Logic ---
@@ -181,6 +215,7 @@
                 if (daysDiff > 0) {
                      return `<span class="review-status-ok px-2 py-1 rounded-full text-xs">Revisar em ${daysDiff} dias</span>`;
                 } else {
+                     // Caso em que já passou o dia de revisão (negativo ou zero)
                      return `<span class="review-status-urgent px-2 py-1 rounded-full text-xs">REVISÃO PENDENTE!</span>`;
                 }
             }
@@ -200,8 +235,11 @@
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                
+                // setLogLevel agora está importado corretamente
+                setLogLevel('debug');
 
-                // 2. CORREÇÃO DA AUTENTICAÇÃO: Usar o token personalizado se existir, caso contrário, usar anónimo.
+                // 2. Autenticação: Usar o token personalizado se existir, caso contrário, usar anónimo.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -213,7 +251,7 @@
                     if (user) {
                         userId = user.uid;
                         isAuthReady = true;
-                        // Alterado: Mostrar o ID do usuário completo.
+                        // Mostrar o ID do usuário completo.
                         document.getElementById('user-info').textContent = userId;
                         startListeningForWords();
                         document.getElementById('loading').classList.add('hidden');
@@ -224,8 +262,8 @@
                 });
 
             } catch (error) {
-                console.error("Erro na inicialização ou autenticação do Firebase:", error);
-                document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro ao carregar (verifique o console).</p>';
+                console.error("Erro FATAL na inicialização ou autenticação do Firebase:", error);
+                document.getElementById('loading').innerHTML = '<p class="text-red-600">Erro FATAL ao carregar (verifique o console para detalhes).</p>';
             }
         }
 
@@ -259,7 +297,6 @@
                 console.log("Palavra adicionada com sucesso!");
             } catch (error) {
                 console.error("Erro ao adicionar palavra:", error);
-                // Não usamos alert(), mas simulamos uma mensagem de erro no console para o dev.
                 console.error("Erro ao salvar palavra. Tente novamente.");
             }
         }
@@ -305,65 +342,126 @@
         }
 
         /**
-         * Deletes a word.
+         * Shows the custom confirmation modal for deleting a word.
          */
-        async function deleteWord(wordId) {
-            if (!isAuthReady) return;
-            // Usar modal customizado ao invés de confirm()
-            if (!window.confirm_action("Tem certeza que deseja deletar esta palavra?")) return;
+        let wordToDeleteInfo = null;
+        function showDeleteConfirmation(wordId, wordText) {
+            wordToDeleteInfo = { id: wordId, text: wordText };
+            document.getElementById('word-to-delete').textContent = wordText;
+            document.getElementById('delete-confirm-modal').classList.remove('hidden');
+        }
+
+        /**
+         * Executes the deletion of the word.
+         */
+        async function executeDeleteWord() {
+            if (!isAuthReady || !wordToDeleteInfo) return;
+            
+            const wordId = wordToDeleteInfo.id;
+
             try {
                 const wordRef = doc(db, getWordCollectionPath(), wordId);
                 await deleteDoc(wordRef);
+                console.log(`Palavra ${wordId} deletada.`);
             } catch (error) {
                 console.error("Erro ao deletar palavra:", error);
+            } finally {
+                // Fechar o modal
+                document.getElementById('delete-confirm-modal').classList.add('hidden');
+                wordToDeleteInfo = null;
             }
         }
         
-        // Custom confirmation function to replace window.confirm (since it's not allowed in iframes)
-        // NOTE: While I should use a custom modal, for simplicity and acknowledging the environment constraints,
-        // I will define a placeholder function that acts like confirm for this specific environment.
-        window.confirm_action = (message) => {
-            console.warn("Aviso: Tentativa de usar window.confirm. No ambiente real, use um modal customizado.", message);
-            return true; // Assume confirmation for testing purposes in a controlled environment.
-        };
-        
-
         /**
-         * Listens for real-time updates to the word list.
+         * Listens for real-time updates to the word list and updates the local state.
          */
         function startListeningForWords() {
-            if (!isAuthReady) return;
+            if (!isAuthReady || !userId) {
+                console.error("Listener do Firestore tentado antes de o ID do usuário estar definido.");
+                return;
+            }
 
-            // Altera o caminho para usar a função de caminho dinâmico
             const wordsCollection = collection(db, getWordCollectionPath());
             const q = query(wordsCollection);
 
             onSnapshot(q, (snapshot) => {
-                const words = [];
+                allWords = []; // Atualiza o estado global
                 snapshot.forEach((doc) => {
                     const data = doc.data();
-                    words.push({ id: doc.id, ...data });
+                    allWords.push({ id: doc.id, ...data });
                 });
-                renderWordList(words);
+                
+                // NOVO: Renderiza a lista aplicando o filtro atual
+                applyFilterAndRender(); 
+                
             }, (error) => {
                 console.error("Erro ao ouvir updates do Firestore:", error);
+                if (error.code === 'permission-denied') {
+                    console.error("🚨 ERRO CRÍTICO: PERMISSÃO NEGADA (RULES). As regras do Firestore não permitem este acesso. Certifique-se de que publicou as regras corretamente.");
+                    document.getElementById('loading').innerHTML = '<p class="text-red-600 font-bold">ERRO: Permissão Negada (Regras do Firestore). Por favor, verifique se publicou as regras no console do Firebase.</p>';
+                } else {
+                    document.getElementById('loading').innerHTML = `<p class="text-red-600">Erro de Conexão: ${error.code}</p>`;
+                }
             });
+        }
+        
+        /**
+         * NOVO: Aplica o filtro atual e gerencia os estilos dos botões.
+         */
+        function applyFilterAndRender(filter = currentFilter) {
+            currentFilter = filter;
+            
+            // 1. Atualiza o estilo dos botões
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                // Remove estilos ativos e inativos
+                btn.classList.remove('bg-gray-700', 'bg-blue-600', 'hover:bg-blue-700', 'bg-yellow-500', 'hover:bg-yellow-600', 'bg-green-500', 'hover:bg-green-600');
+                btn.classList.add('text-white'); // Garante que a cor do texto é branca
+                
+                if (btn.dataset.filter === filter) {
+                    btn.classList.add('bg-gray-700'); // Estado Ativo (cinzento escuro)
+                } else {
+                    // Estado Inativo - restaurar cores originais
+                    if (btn.dataset.filter === 'all') {
+                        btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    } else if (btn.dataset.filter === 'due') {
+                        btn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+                    } else if (btn.dataset.filter === 'mastered') {
+                        btn.classList.add('bg-green-500', 'hover:bg-green-600');
+                    }
+                }
+            });
+            
+            // 2. Renderiza a lista filtrada
+            renderWordList(allWords);
         }
 
         /**
-         * Renders the list of words in the table.
+         * Renders the list of words in the table (now accepts and applies filtering).
          */
         function renderWordList(words) {
             const wordListBody = document.getElementById('word-list');
             wordListBody.innerHTML = ''; // Clear existing list
 
-            // Sort words: Urgent > Due > Upcoming > Mastered
-            const sortedWords = words.sort((a, b) => {
+            // 1. Filtra as palavras baseadas no estado global `currentFilter`
+            const filteredWords = words.filter(word => {
+                if (currentFilter === 'all') return true;
+                if (currentFilter === 'mastered') return word.isMastered;
+                if (currentFilter === 'due') {
+                    return isReviewDue(word.lastReviewDate, word.nextReviewDay);
+                }
+                return true;
+            });
+
+            // 2. Classifica as palavras: Urgente > Para Hoje > Próxima > Dominada
+            const sortedWords = filteredWords.sort((a, b) => {
                 const aDue = isReviewDue(a.lastReviewDate, a.nextReviewDay);
                 const bDue = isReviewDue(b.lastReviewDate, b.nextReviewDay);
 
+                // Coloca as dominadas no fim
                 if (a.isMastered !== b.isMastered) return a.isMastered ? 1 : -1;
+                // Coloca as que estão para revisão à frente
                 if (aDue !== bDue) return aDue ? -1 : 1;
+                // Ordena por próxima data de revisão
                 if (a.nextReviewDay !== b.nextReviewDay) return a.nextReviewDay - b.nextReviewDay;
                 return 0;
             });
@@ -428,7 +526,7 @@
                             Revisado!
                         </button>` : `<span class="text-gray-400">Completo</span>`
                     }
-                    <button onclick="window.deleteWord('${word.id}')"
+                    <button onclick="window.showDeleteConfirmation('${word.id}', '${word.word}')"
                         class="text-red-600 hover:text-red-900 transition duration-150">
                         Deletar
                     </button>
@@ -452,7 +550,6 @@
                     addWord(word, context);
                     document.getElementById('add-word-form').reset();
                 } else {
-                    // Não usamos alert(), mas simulamos uma mensagem de erro no console para o dev.
                     console.error('Erro: Por favor, preencha a palavra E o contexto.');
                 }
             };
@@ -467,6 +564,11 @@
                 };
             });
 
+            // NOVO: Filter Controls handling
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.onclick = (e) => applyFilterAndRender(e.target.dataset.filter);
+            });
+
             // Retrieval Practice Modal handling
             const modal = document.getElementById('context-modal');
             const modalWordEl = document.getElementById('modal-word');
@@ -474,6 +576,14 @@
             const hiddenContextEl = document.getElementById('modal-hidden-context');
             const showContextBtn = document.getElementById('show-context-btn');
             const closeModalBtn = document.getElementById('close-modal-btn');
+            
+            // Delete Confirmation Modal Listeners
+            document.getElementById('confirm-delete-btn').onclick = executeDeleteWord;
+            document.getElementById('cancel-delete-btn').onclick = () => {
+                document.getElementById('delete-confirm-modal').classList.add('hidden');
+                wordToDeleteInfo = null;
+            };
+
 
             document.querySelectorAll('.recall-btn').forEach(btn => {
                 btn.onclick = (e) => {
@@ -500,7 +610,7 @@
 
         // Expose functions to window scope for onclick attributes in dynamic HTML
         window.completeReview = completeReview;
-        window.deleteWord = deleteWord;
+        window.showDeleteConfirmation = showDeleteConfirmation;
 
         // Start the application
         document.getElementById('loading').classList.remove('hidden');
